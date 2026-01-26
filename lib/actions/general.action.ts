@@ -58,6 +58,11 @@ export async function createFeedback(params: CreateFeedbackParams) {
     }
 
     await feedbackRef.set(feedback);
+    
+    // Update interview status to finalized
+    await db.collection("interviews").doc(interviewId).update({
+      finalized: true,
+    });
 
     return { success: true, feedbackId: feedbackRef.id };
   } catch (error) {
