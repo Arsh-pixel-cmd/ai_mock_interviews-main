@@ -2,7 +2,8 @@
 
 import { generateObject } from "ai";
 import { google } from "@ai-sdk/google";
-import pdf from "pdf-parse";
+// @ts-ignore
+import pdf from "pdf-parse/lib/pdf-parse.js";
 import { z } from "zod";
 
 const resumeAnalysisSchema = z.object({
