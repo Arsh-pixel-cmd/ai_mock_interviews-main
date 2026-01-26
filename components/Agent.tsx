@@ -106,8 +106,15 @@ const Agent = ({
     };
 
     if (callStatus === CallStatus.FINISHED) {
+      console.log("Call finished, type:", type);
       if (type === "generate") {
-        router.push("/");
+         // If it's a generated interview, we still want to save feedback if messages exist
+         if (messages.length > 0) {
+            handleGenerateFeedback(messages);
+         } else {
+             console.log("No messages, redirecting to home");
+             router.push("/");
+         }
       } else {
         handleGenerateFeedback(messages);
       }
@@ -132,7 +139,10 @@ const Agent = ({
           .join("\n");
       }
 
-      await vapi.start(interviewer, {
+      console.log("Starting Vapi with ID:", process.env.NEXT_PUBLIC_VAPI_WORKFLOW_ID);
+      console.log("Options:", { variableValues: { questions: formattedQuestions } });
+
+      await vapi.start(process.env.NEXT_PUBLIC_VAPI_WORKFLOW_ID!, {
         variableValues: {
           questions: formattedQuestions,
         },
