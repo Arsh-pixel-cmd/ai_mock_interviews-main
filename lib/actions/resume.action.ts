@@ -2,8 +2,7 @@
 
 import { generateObject } from "ai";
 import { google } from "@ai-sdk/google";
-// @ts-ignore
-import pdf from "pdf-parse/lib/pdf-parse.js";
+import { PDFParse } from "pdf-parse";
 import { z } from "zod";
 
 const resumeAnalysisSchema = z.object({
@@ -21,9 +20,11 @@ export async function analyzeResume(formData: FormData) {
 
   try {
     const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    const data = await pdf(buffer);
-    const text = data.text;
+    
+    // Use the new class-based API for pdf-parse v2+
+    const parser = new PDFParse({ data: arrayBuffer });
+    const textResult = await parser.getText();
+    const text = textResult.text;
 
     const { object } = await generateObject({
       model: google("gemini-2.0-flash-001"),
