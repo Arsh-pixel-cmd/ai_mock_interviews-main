@@ -17,8 +17,8 @@ const resumeAnalysisSchema = z.object({
 });
 
 const detailedAnalysisSchema = z.object({
-  overallMatchScore: z.number().min(0).max(100).describe("Overall JD match percentage (0-100)"),
-  atsScore: z.number().min(0).max(10).describe("ATS Friendliness score out of 10"),
+  overallMatchScore: z.number().describe("Overall JD match percentage (0-100)"),
+  atsScore: z.number().describe("ATS Friendliness score out of 10"),
   isAtsFriendly: z.boolean().describe("Whether the resume passes standard ATS parsing filters"),
   atsSummary: z.string().describe("Concise explanation of ATS compatibility and formatting health"),
   targetRoleMatch: z.object({
@@ -41,15 +41,15 @@ const detailedAnalysisSchema = z.object({
       category: z.enum(["impact", "formatting", "brevity", "skills", "contact"]),
       flaw: z.string().describe("Specific weakness or flaw detected in the resume"),
       suggestion: z.string().describe("Actionable fix to resolve this flaw"),
-      exampleRewrite: z.string().optional().describe("Concrete before/after bullet rewrite example"),
+      exampleRewrite: z.string().describe("Concrete before/after bullet rewrite example, or empty string if not applicable"),
     })
   ).describe("List of flaws, weak action verbs, lack of metrics, or formatting risks"),
-  quantifiableImpactScore: z.number().min(0).max(10).describe("Score evaluating metrics, percentages, dollar values vs passive duties"),
-  actionVerbScore: z.number().min(0).max(10).describe("Strength of bullet point action verbs"),
+  quantifiableImpactScore: z.number().describe("Score evaluating metrics, percentages, dollar values vs passive duties (0-10)"),
+  actionVerbScore: z.number().describe("Strength of bullet point action verbs (0-10)"),
   verdict: z.enum(["Strong Match", "Moderate Match", "Needs Optimization", "High Risk of Rejection"]),
-  shortlistProbability: z.number().min(0).max(100).describe("Estimated likelihood of getting past recruiter ATS screening (0-100%)"),
+  shortlistProbability: z.number().describe("Estimated likelihood of getting past recruiter ATS screening (0-100%)"),
   keyRecommendations: z.array(z.string()).describe("Top 3-5 immediate steps candidate should take"),
-  suggestedLatexCode: z.string().describe("Complete, clean, standard LaTeX resume document incorporating the candidate's info and weaving in the missing keywords cleanly into bullet points using standard modern tech resume structure"),
+  suggestedLatexCode: z.string().describe("Empty string; complete LaTeX document is generated via plain text generator"),
 });
 
 /**
@@ -241,6 +241,7 @@ export async function analyzeResumeWithJD(formData: FormData): Promise<{
     const { object } = await generateObject({
       model: groq(GROQ_MODEL),
       schema: detailedAnalysisSchema,
+      maxOutputTokens: 3500,
       prompt: `
 You are an elite Tech Recruiter, ATS (Applicant Tracking System) Specialist, and Career Coach.
 Analyze the candidate's resume strictly against the provided Job Description (JD).
@@ -257,19 +258,40 @@ ${resumeText}
 === INSTRUCTIONS ===
 1. Analyze how well the resume matches the JD (overallMatchScore from 0 to 100).
 2. Evaluate ATS friendliness (atsScore 0 to 10). Check if standard headings, no weird tables/graphics, simple text parsing work.
-3. Identify all critical MISSING KEYWORDS and technologies from the JD that the candidate did NOT explicitly mention. Categorize them (technical, soft-skills, domain, tools) with priority.
-4. List MATCHING KEYWORDS already present.
-5. Identify RESUME FLAWS: weak action verbs (e.g. "responsible for", "helped"), lack of quantifiable impact (missing % numbers, scale, revenue, latency improvements), formatting risks, or fluff. Provide concrete before-and-after rewrite examples for each flaw!
+3. Identify up to 15 most critical MISSING KEYWORDS and technologies from the JD that the candidate did NOT explicitly mention. Categorize them (technical, soft-skills, domain, tools) with priority and concise whyNeeded reason.
+4. List MATCHING KEYWORDS already present in both JD and resume.
+5. Identify up to 5 specific RESUME FLAWS: weak action verbs (e.g. "responsible for", "helped"), lack of quantifiable impact (missing % numbers, scale, latency improvements), formatting risks, or fluff. Provide concrete before-and-after rewrite examples for each flaw!
 6. Calculate quantifiableImpactScore (0-10) and actionVerbScore (0-10).
 7. Calculate shortlistProbability (0-100%) reflecting real-world chances of passing both automated ATS and the hiring manager's 6-second scan.
-8. Generate suggestedLatexCode: Write a COMPLETE, compile-ready LaTeX document (using standard packages like hyperref, enumitem, titlesec) in clean Jake's Resume / Overleaf style. Populate it with the candidate's real experience, education, and skills from the resume, BUT rewrite weak bullets with high-impact action verbs + metrics and weave in the missing keywords naturally so it scores 95%+ on this JD!
-Do NOT use markdown code fences in the suggestedLatexCode field; return raw LaTeX string.
+8. Provide top 3-5 immediate keyRecommendations.
+9. For suggestedLatexCode, return an empty string ("") because full LaTeX resumes are generated separately.
       `,
     });
 
+    // Pre-generate tailored LaTeX resume cleanly via generateText (avoiding JSON escaping & token limits)
+    let customizedLatex = "";
+    try {
+      const topKeywords = object.missingKeywords.slice(0, 10).map((k) => k.keyword);
+      const latexRes = await generateCustomLatexResume({
+        jobDescription: jdText,
+        missingKeywords: topKeywords,
+        instructions: `Candidate Experience & Details from Resume:\n${resumeText.slice(0, 3000)}\n\nGenerate an ATS-optimized, modern 1-page LaTeX resume tailored for "${targetRole}". Integrate these keywords where relevant: ${topKeywords.join(", ")}.`,
+      });
+      if (latexRes.success && latexRes.latex) {
+        customizedLatex = latexRes.latex;
+      }
+    } catch (latexErr) {
+      console.warn("Could not pre-generate LaTeX resume, user can still use LaTeX studio:", latexErr);
+    }
+
+    const finalAnalysis: DetailedResumeAnalysis = {
+      ...object,
+      suggestedLatexCode: customizedLatex,
+    };
+
     return {
       success: true,
-      analysis: object,
+      analysis: finalAnalysis,
       extractedResumeText: resumeText,
     };
   } catch (error: any) {

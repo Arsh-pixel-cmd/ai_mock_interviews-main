@@ -600,7 +600,7 @@ export default function ResumeAnalyzerPro({
                               <p className="text-light-100 leading-relaxed">{flaw.suggestion}</p>
                             </div>
 
-                            {flaw.exampleRewrite && (
+                            {flaw.exampleRewrite && flaw.exampleRewrite.trim().length > 0 && (
                               <div className="p-3 rounded-lg bg-success-100/10 border border-success-100/20">
                                 <span className="font-bold text-success-100 block mb-1">
                                   High-Impact Before/After Rewrite:
