@@ -3,13 +3,14 @@ import { groq } from "@ai-sdk/groq";
 
 import { execute } from "@/lib/db";
 import { getRandomInterviewCover } from "@/lib/utils";
+import { GROQ_MODEL } from "@/constants";
 
 export async function POST(request: Request) {
   const { type, role, level, techstack, amount, userid } = await request.json();
 
   try {
     const { text: questions } = await generateText({
-      model: groq("llama-3.3-70b-versatile"),
+      model: groq(GROQ_MODEL),
       prompt: `Prepare questions for a job interview.
         The job role is ${role}.
         The job experience level is ${level}.

@@ -228,3 +228,94 @@ export const dummyInterviews: Interview[] = [
     createdAt: "2024-03-14T15:30:00Z",
   },
 ];
+
+export const GROQ_MODEL = "openai/gpt-oss-120b";
+
+export const DEFAULT_LATEX_TEMPLATE = `\\documentclass[letterpaper,11pt]{article}
+
+\\usepackage{latexsym}
+\\usepackage[empty]{fullpage}
+\\usepackage{titlesec}
+\\usepackage{marvosym}
+\\usepackage[usenames,dvipsnames]{color}
+\\usepackage{verbatim}
+\\usepackage{enumitem}
+\\usepackage[hidelinks]{hyperref}
+\\usepackage{fancyhdr}
+\\usepackage[english]{babel}
+\\usepackage{tabularx}
+
+\\pagestyle{fancy}
+\\fancyhf{}
+\\fancyfoot{}
+\\renewcommand{\\headrulewidth}{0pt}
+\\renewcommand{\\footrulewidth}{0pt}
+
+\\addtolength{\\oddsidemargin}{-0.5in}
+\\addtolength{\\evensidemargin}{-0.5in}
+\\addtolength{\\textwidth}{1in}
+\\addtolength{\\topmargin}{-.5in}
+\\addtolength{\\textheight}{1.0in}
+
+\\urlstyle{same}
+\\raggedbottom
+\\raggedright
+\\setlength{\\tabcolsep}{0in}
+
+\\titleformat{\\section}{
+  \\vspace{-4pt}\\scshape\\raggedright\\large
+}{}{0em}{}[\\color{black}\\titlerule \\vspace{-5pt}]
+
+\\begin{document}
+
+%----------HEADING----------
+\\begin{center}
+    \\textbf{\\Huge \\scshape Alex Morgan} \\\\ \\vspace{1pt}
+    \\small +1 (555) 019-2834 $|$ \\href{mailto:alex.morgan@email.com}{\\underline{alex.morgan@email.com}} $|$ 
+    \\href{https://linkedin.com/in/alexmorgan}{\\underline{linkedin.com/in/alexmorgan}} $|$
+    \\href{https://github.com/alexmorgan}{\\underline{github.com/alexmorgan}}
+\\end{center}
+
+%-----------EDUCATION-----------
+\\section{Education}
+  \\begin{itemize}[leftmargin=0.15in, label={}]
+    \\item
+      \\textbf{University of California, Berkeley}{ -- B.S. in Computer Science} \\hfill {Aug 2020 -- May 2024} \\\\
+      Relevant Coursework: Data Structures, Algorithms, Distributed Systems, Database Systems, Web Architecture
+  \\end{itemize}
+
+%-----------TECHNICAL SKILLS-----------
+\\section{Technical Skills}
+ \\begin{itemize}[leftmargin=0.15in, label={}]
+    \\small{\\item{
+     \\textbf{Languages}{: TypeScript, JavaScript, Python, SQL, HTML5, CSS3} \\\\
+     \\textbf{Frameworks \\& Libraries}{: React.js, Next.js, Node.js, Express, Tailwind CSS, Redux} \\\\
+     \\textbf{Developer Tools}{: Git, GitHub Actions, Docker, AWS (S3, Lambda), Vercel, Postman} \\\\
+     \\textbf{Databases \\& Cloud}{: PostgreSQL, MongoDB, Redis, Cloudflare D1}
+    }}
+ \\end{itemize}
+
+%-----------EXPERIENCE-----------
+\\section{Experience}
+  \\begin{itemize}[leftmargin=0.15in, label={}]
+    \\item
+      \\textbf{Software Engineer Intern} $|$ {TechCorp Solutions} \\hfill {Jun 2023 -- Aug 2023}
+      \\begin{itemize}
+        \\item Engineered responsive front-end components using React and TypeScript, increasing user session engagement by 28\\%.
+        \\item Optimized RESTful API endpoints and reduced database query latency by 42\\% across high-traffic microservices.
+        \\item Implemented automated CI/CD pipelines with GitHub Actions, cutting release deployment cycles from 45 to 12 minutes.
+      \\end{itemize}
+  \\end{itemize}
+
+%-----------PROJECTS-----------
+\\section{Projects}
+  \\begin{itemize}[leftmargin=0.15in, label={}]
+    \\item
+      \\textbf{AI Mock Interview Platform} $|$ \\emph{Next.js, TypeScript, Groq AI, Tailwind CSS} \\hfill {Jan 2024 -- Present}
+      \\begin{itemize}
+        \\item Architected real-time conversational voice interview agent using WebRTC and speech recognition with sub-second latency.
+        \\item Designed automated feedback scoring engine delivering detailed category rubrics and ATS resume evaluations.
+      \\end{itemize}
+  \\end{itemize}
+
+\\end{document}`;

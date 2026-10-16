@@ -11,6 +11,7 @@ const nextConfig: NextConfig = {
   //     },
   //   ],
   // },
+  serverExternalPackages: ["pdf-parse", "pdfjs-dist"],
   eslint: {
     ignoreDuringBuilds: true,
   },

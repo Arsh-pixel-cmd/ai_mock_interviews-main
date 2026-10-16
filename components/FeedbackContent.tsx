@@ -8,7 +8,7 @@ import { useReactToPrint } from "react-to-print";
 import { Download } from "lucide-react";
 
 import { Button } from "@/components/ui/button"; 
-import ResumeAnalyzer from "@/components/ResumeAnalyzer";
+import ResumeAnalyzerPro from "@/components/ResumeAnalyzerPro";
 
 interface FeedbackContentProps {
   feedback: Feedback;
@@ -106,8 +106,23 @@ const FeedbackContent = ({ feedback, interview }: FeedbackContentProps) => {
         </div>
       </div>
 
-      <div className="my-8 print:hidden">
-        <ResumeAnalyzer />
+      <div className="my-8 print:hidden flex flex-col gap-4">
+        <div className="flex flex-col gap-1">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary-200/10 text-primary-200 border border-primary-200/20 text-xs font-semibold w-fit">
+            Next Step • Resume Shortlisting Check
+          </div>
+          <h2 className="text-2xl font-bold text-white">
+            Can Your Resume Pass the Recruiter Screening for this Role?
+          </h2>
+          <p className="text-sm text-light-100">
+            Upload your resume and analyze it directly against this {interview.role} position and tech stack ({interview.techstack?.join(", ") || "General"}). Detect missing keywords and edit in LaTeX to guarantee shortlisting!
+          </p>
+        </div>
+
+        <ResumeAnalyzerPro
+          initialRole={interview.role}
+          initialJobDescription={`Role: ${interview.role} (${interview.level} Level)\nRequired Tech Stack: ${interview.techstack?.join(", ") || "Full Stack"}\nInterview Topics Tested: ${interview.questions?.slice(0, 4).join("; ") || "Core principles, system design, coding"}`}
+        />
       </div>
 
       <div className="buttons print:hidden">

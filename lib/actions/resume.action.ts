@@ -1,9 +1,14 @@
 "use server";
 
+import path from "path";
+import fs from "fs";
+import { pathToFileURL } from "url";
+import zlib from "zlib";
 import { generateObject, generateText } from "ai";
 import { groq } from "@ai-sdk/groq";
 import { PDFParse } from "pdf-parse";
 import { z } from "zod";
+import { GROQ_MODEL } from "@/constants";
 
 const resumeAnalysisSchema = z.object({
   score: z.number().describe("Score out of 10"),
@@ -47,95 +52,74 @@ const detailedAnalysisSchema = z.object({
   suggestedLatexCode: z.string().describe("Complete, clean, standard LaTeX resume document incorporating the candidate's info and weaving in the missing keywords cleanly into bullet points using standard modern tech resume structure"),
 });
 
-// Default fallback LaTeX resume template
-export const DEFAULT_LATEX_TEMPLATE = `\\documentclass[letterpaper,11pt]{article}
+/**
+ * Configure pdfjs worker location for Node.js / Next.js SSR
+ */
+function ensurePdfWorker() {
+  try {
+    const workerRelativePath = "./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs";
+    const absoluteWorkerPath = path.resolve(process.cwd(), workerRelativePath);
+    if (fs.existsSync(absoluteWorkerPath)) {
+      PDFParse.setWorker(pathToFileURL(absoluteWorkerPath).href);
+    }
+  } catch {
+    // If worker configuration fails, will fallback gracefully
+  }
+}
 
-\\usepackage{latexsym}
-\\usepackage[empty]{fullpage}
-\\usepackage{titlesec}
-\\usepackage{marvosym}
-\\usepackage[usenames,dvipsnames]{color}
-\\usepackage{verbatim}
-\\usepackage{enumitem}
-\\usepackage[hidelinks]{hyperref}
-\\usepackage{fancyhdr}
-\\usepackage[english]{babel}
-\\usepackage{tabularx}
+/**
+ * Robust fallback PDF text stream extractor for environments where worker threads fail
+ */
+function fallbackExtractPdfText(buffer: Buffer): string {
+  const textChunks: string[] = [];
+  const content = buffer.toString("binary");
+  const streamRegex = /stream[\r\n]+([\s\S]*?)[\r\n]+endstream/g;
+  let match: RegExpExecArray | null;
 
-\\pagestyle{fancy}
-\\fancyhf{}
-\\fancyfoot{}
-\\renewcommand{\\headrulewidth}{0pt}
-\\renewcommand{\\footrulewidth}{0pt}
+  while ((match = streamRegex.exec(content)) !== null) {
+    const rawStream = Buffer.from(match[1], "binary");
+    let decompressed = "";
+    try {
+      decompressed = zlib.inflateSync(rawStream).toString("latin1");
+    } catch {
+      try {
+        decompressed = zlib.unzipSync(rawStream).toString("latin1");
+      } catch {
+        decompressed = rawStream.toString("latin1");
+      }
+    }
 
-\\addtolength{\\oddsidemargin}{-0.5in}
-\\addtolength{\\evensidemargin}{-0.5in}
-\\addtolength{\\textwidth}{1in}
-\\addtolength{\\topmargin}{-.5in}
-\\addtolength{\\textheight}{1.0in}
+    // Capture strings inside parentheses with text-showing operators Tj, ', "
+    const tjMatches = decompressed.matchAll(/\(([^)]+)\)\s*(?:Tj|'|")/g);
+    for (const m of tjMatches) {
+      textChunks.push(m[1]);
+    }
 
-\\urlstyle{same}
-\\raggedbottom
-\\raggedright
-\\setlength{\\tabcolsep}{0in}
+    // Capture arrays with TJ operator: [ (foo) -10 (bar) ] TJ
+    const tjArrayMatches = decompressed.matchAll(/\[([\s\S]*?)\]\s*TJ/g);
+    for (const m of tjArrayMatches) {
+      const inner = m[1];
+      const parts = inner.matchAll(/\(([^)]+)\)/g);
+      for (const p of parts) {
+        textChunks.push(p[1]);
+      }
+    }
+  }
 
-\\titleformat{\\section}{
-  \\vspace{-4pt}\\scshape\\raggedright\\large
-}{}{0em}{}[\\color{black}\\titlerule \\vspace{-5pt}]
+  // Also match uncompressed text blocks if any
+  if (textChunks.length === 0) {
+    const directMatches = content.matchAll(/\(([^)]{2,})\)\s*(?:Tj|'|")/g);
+    for (const m of directMatches) {
+      textChunks.push(m[1]);
+    }
+  }
 
-\\begin{document}
-
-%----------HEADING----------
-\\begin{center}
-    \\textbf{\\Huge \\scshape Alex Morgan} \\\\ \\vspace{1pt}
-    \\small +1 (555) 019-2834 $|$ \\href{mailto:alex.morgan@email.com}{\\underline{alex.morgan@email.com}} $|$ 
-    \\href{https://linkedin.com/in/alexmorgan}{\\underline{linkedin.com/in/alexmorgan}} $|$
-    \\href{https://github.com/alexmorgan}{\\underline{github.com/alexmorgan}}
-\\end{center}
-
-%-----------EDUCATION-----------
-\\section{Education}
-  \\begin{itemize}[leftmargin=0.15in, label={}]
-    \\item
-      \\textbf{University of California, Berkeley}{ -- B.S. in Computer Science} \\hfill {Aug 2020 -- May 2024} \\\\
-      Relevant Coursework: Data Structures, Algorithms, Distributed Systems, Database Systems, Web Architecture
-  \\end{itemize}
-
-%-----------TECHNICAL SKILLS-----------
-\\section{Technical Skills}
- \\begin{itemize}[leftmargin=0.15in, label={}]
-    \\small{\\item{
-     \\textbf{Languages}{: TypeScript, JavaScript, Python, SQL, HTML5, CSS3} \\\\
-     \\textbf{Frameworks \\& Libraries}{: React.js, Next.js, Node.js, Express, Tailwind CSS, Redux} \\\\
-     \\textbf{Developer Tools}{: Git, GitHub Actions, Docker, AWS (S3, Lambda), Vercel, Postman} \\\\
-     \\textbf{Databases \\& Cloud}{: PostgreSQL, MongoDB, Redis, Cloudflare D1}
-    }}
- \\end{itemize}
-
-%-----------EXPERIENCE-----------
-\\section{Experience}
-  \\begin{itemize}[leftmargin=0.15in, label={}]
-    \\item
-      \\textbf{Software Engineer Intern} $|$ {TechCorp Solutions} \\hfill {Jun 2023 -- Aug 2023}
-      \\begin{itemize}
-        \\item Engineered responsive front-end components using React and TypeScript, increasing user session engagement by 28\\%.
-        \\item Optimized RESTful API endpoints and reduced database query latency by 42\\% across high-traffic microservices.
-        \\item Implemented automated CI/CD pipelines with GitHub Actions, cutting release deployment cycles from 45 to 12 minutes.
-      \\end{itemize}
-  \\end{itemize}
-
-%-----------PROJECTS-----------
-\\section{Projects}
-  \\begin{itemize}[leftmargin=0.15in, label={}]
-    \\item
-      \\textbf{AI Mock Interview Platform} $|$ \\emph{Next.js, TypeScript, Groq AI, Tailwind CSS} \\hfill {Jan 2024 -- Present}
-      \\begin{itemize}
-        \\item Architected real-time conversational voice interview agent using WebRTC and speech recognition with sub-second latency.
-        \\item Designed automated feedback scoring engine delivering detailed category rubrics and ATS resume evaluations.
-      \\end{itemize}
-  \\end{itemize}
-
-\\end{document}`;
+  return textChunks
+    .join(" ")
+    .replace(/\\([()\\])/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 /**
  * Extracts raw text from an uploaded resume file or directly supplied text
@@ -154,21 +138,41 @@ async function extractResumeText(file?: File | null, rawText?: string): Promise<
 
   if (fileType === "application/pdf" || fileName.endsWith(".pdf")) {
     const arrayBuffer = await file.arrayBuffer();
-    const parser = new PDFParse({ data: arrayBuffer });
-    const textResult = await parser.getText();
-    const parsedText = textResult.text?.trim();
+    const buffer = Buffer.from(arrayBuffer);
 
-    if (!parsedText || parsedText.length < 20) {
-      throw new Error(
-        "Could not extract readable text from the uploaded PDF. Please make sure the PDF is not an image-only scan or copy-paste your resume text."
-      );
+    // 1. Try PDFParse with configured worker
+    try {
+      ensurePdfWorker();
+      const parser = new PDFParse({ data: buffer });
+      const textResult = await parser.getText();
+      const parsedText = textResult.text?.trim();
+
+      if (parsedText && parsedText.length >= 20) {
+        return parsedText;
+      }
+    } catch (parseError) {
+      console.warn("PDFParse worker error, falling back to stream extractor:", parseError);
     }
-    return parsedText;
+
+    // 2. Fallback to native PDF stream extractor
+    try {
+      const fallbackText = fallbackExtractPdfText(buffer);
+      if (fallbackText && fallbackText.length >= 20) {
+        return fallbackText;
+      }
+    } catch (fallbackError) {
+      console.warn("Fallback extractor error:", fallbackError);
+    }
+
+    throw new Error(
+      "Could not extract readable text from the uploaded PDF. Please make sure the PDF has selectable text (not an image-only scan) or use the 'Paste Text Instead' option."
+    );
   }
 
   // Plain text or markdown file
   return await file.text();
 }
+
 
 /**
  * Simple baseline resume analyzer (backward-compatible)
@@ -184,7 +188,7 @@ export async function analyzeResume(formData: FormData) {
     const text = await extractResumeText(file);
 
     const { object } = await generateObject({
-      model: groq("llama-3.3-70b-versatile"),
+      model: groq(GROQ_MODEL),
       schema: resumeAnalysisSchema,
       prompt: `
         Analyze this resume for ATS (Applicant Tracking System) friendliness.
@@ -235,7 +239,7 @@ export async function analyzeResumeWithJD(formData: FormData): Promise<{
       : `Role: ${targetRole}. Looking for a capable, proactive engineer with modern software development skills, strong technical fundamentals, teamwork, and clean coding practices.`;
 
     const { object } = await generateObject({
-      model: groq("llama-3.3-70b-versatile"),
+      model: groq(GROQ_MODEL),
       schema: detailedAnalysisSchema,
       prompt: `
 You are an elite Tech Recruiter, ATS (Applicant Tracking System) Specialist, and Career Coach.
@@ -311,7 +315,7 @@ REQUIREMENTS:
 `;
 
     const { text } = await generateText({
-      model: groq("llama-3.3-70b-versatile"),
+      model: groq(GROQ_MODEL),
       prompt,
     });
 
