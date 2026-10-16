@@ -5,9 +5,9 @@
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
-    "build:cf": "opennextjs-cloudflare",
-    "deploy": "opennextjs-cloudflare && wrangler deploy",
-    "d1:migrate": "wrangler d1 execute prepwise-db --file=./d1/schema.sql",
+    "build:cf": "opennextjs-cloudflare build",
+    "deploy": "opennextjs-cloudflare build && wrangler deploy",
+    "d1:migrate": "wrangler d1 execute prepwise-db --remote --file=./d1/schema.sql -y",
     "d1:migrate:local": "wrangler d1 execute prepwise-db --local --file=./d1/schema.sql",
     "start": "next start",
     "lint": "next lint"

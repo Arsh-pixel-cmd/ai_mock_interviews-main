@@ -6,7 +6,32 @@ import { google } from "@ai-sdk/google";
 import { query, queryFirst, execute } from "@/lib/db";
 import { feedbackSchema } from "@/constants";
 
-function parseInterviewRow(row: any): Interview {
+interface RawInterviewRow {
+  id: string;
+  role: string;
+  type: string;
+  level: string;
+  userId: string;
+  finalized: number | boolean;
+  coverImage?: string;
+  createdAt: string;
+  techstack: string | string[];
+  questions: string | string[];
+}
+
+interface RawFeedbackRow {
+  id: string;
+  interviewId: string;
+  userId: string;
+  totalScore: number;
+  finalAssessment: string;
+  createdAt: string;
+  categoryScores: string | Feedback["categoryScores"];
+  strengths: string | string[];
+  areasForImprovement: string | string[];
+}
+
+function parseInterviewRow(row: RawInterviewRow): Interview {
   return {
     id: row.id,
     role: row.role,
@@ -21,7 +46,7 @@ function parseInterviewRow(row: any): Interview {
   };
 }
 
-function parseFeedbackRow(row: any): Feedback {
+function parseFeedbackRow(row: RawFeedbackRow): Feedback {
   return {
     id: row.id,
     interviewId: row.interviewId,
@@ -101,7 +126,7 @@ export async function createFeedback(params: CreateFeedbackParams) {
 }
 
 export async function getInterviewById(id: string): Promise<Interview | null> {
-  const row = await queryFirst("SELECT * FROM interviews WHERE id = ? LIMIT 1", [id]);
+  const row = await queryFirst<RawInterviewRow>("SELECT * FROM interviews WHERE id = ? LIMIT 1", [id]);
   if (!row) return null;
   return parseInterviewRow(row);
 }
@@ -111,7 +136,7 @@ export async function getFeedbackByInterviewId(
 ): Promise<Feedback | null> {
   const { interviewId, userId } = params;
 
-  const row = await queryFirst(
+  const row = await queryFirst<RawFeedbackRow>(
     "SELECT * FROM feedback WHERE interviewId = ? AND userId = ? LIMIT 1",
     [interviewId, userId]
   );
@@ -125,7 +150,7 @@ export async function getLatestInterviews(
 ): Promise<Interview[] | null> {
   const { userId, limit = 20 } = params;
 
-  const rows = await query(
+  const rows = await query<RawInterviewRow>(
     "SELECT * FROM interviews WHERE finalized = 1 AND userId != ? ORDER BY createdAt DESC LIMIT ?",
     [userId, limit]
   );
@@ -136,7 +161,7 @@ export async function getLatestInterviews(
 export async function getInterviewsByUserId(
   userId: string
 ): Promise<Interview[] | null> {
-  const rows = await query(
+  const rows = await query<RawInterviewRow>(
     "SELECT * FROM interviews WHERE userId = ? ORDER BY createdAt DESC",
     [userId]
   );

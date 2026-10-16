@@ -2,18 +2,23 @@
 // Works both in Cloudflare Workers/Pages runtime (via binding)
 // and in local development / Node.js (via Cloudflare D1 REST API)
 
-interface D1Result<T = any> {
-  results?: T[];
-  success: boolean;
-  meta?: any;
+interface D1PreparedStatementLike {
+  bind(...values: unknown[]): {
+    all<T = unknown>(): Promise<{ results?: T[] }>;
+    run(): Promise<unknown>;
+  };
+}
+
+interface D1DatabaseLike {
+  prepare(query: string): D1PreparedStatementLike;
 }
 
 // Helper to get native Cloudflare binding if available
-async function getD1Binding(): Promise<any | null> {
+async function getD1Binding(): Promise<D1DatabaseLike | null> {
   try {
     const { getCloudflareContext } = await import("@opennextjs/cloudflare");
     const ctx = await getCloudflareContext({ async: true });
-    const dbBinding = (ctx?.env as any)?.DB;
+    const dbBinding = (ctx?.env as Record<string, unknown>)?.DB as D1DatabaseLike | undefined;
     if (dbBinding) {
       return dbBinding;
     }
@@ -21,15 +26,16 @@ async function getD1Binding(): Promise<any | null> {
     // Not running inside Cloudflare runtime
   }
 
-  if (typeof (globalThis as any).DB !== "undefined") {
-    return (globalThis as any).DB;
+  const globalDb = (globalThis as unknown as Record<string, unknown>).DB as D1DatabaseLike | undefined;
+  if (globalDb) {
+    return globalDb;
   }
 
   return null;
 }
 
 // Query helper via Cloudflare D1 REST API (used in local development)
-async function executeViaRestApi(sql: string, params: any[] = []): Promise<any[]> {
+async function executeViaRestApi<T = unknown>(sql: string, params: unknown[] = []): Promise<T[]> {
   const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
   const databaseId = process.env.CLOUDFLARE_D1_DATABASE_ID;
   const apiToken = process.env.CLOUDFLARE_API_TOKEN;
@@ -56,7 +62,11 @@ async function executeViaRestApi(sql: string, params: any[] = []): Promise<any[]
     }
   );
 
-  const data = await response.json();
+  const data = (await response.json()) as {
+    success: boolean;
+    errors?: Array<{ message: string }>;
+    result?: Array<{ results?: T[] }>;
+  };
 
   if (!data.success) {
     const errorMsg = data.errors?.[0]?.message || "Cloudflare D1 query failed";
@@ -70,22 +80,22 @@ async function executeViaRestApi(sql: string, params: any[] = []): Promise<any[]
 /**
  * Execute a SELECT query and return an array of rows
  */
-export async function query<T = any>(sql: string, params: any[] = []): Promise<T[]> {
+export async function query<T = unknown>(sql: string, params: unknown[] = []): Promise<T[]> {
   const db = await getD1Binding();
 
   if (db) {
     const stmt = db.prepare(sql).bind(...params);
-    const { results } = await stmt.all();
+    const { results } = await stmt.all<T>();
     return (results || []) as T[];
   }
 
-  return (await executeViaRestApi(sql, params)) as T[];
+  return await executeViaRestApi<T>(sql, params);
 }
 
 /**
  * Execute a SELECT query and return the first row (or null)
  */
-export async function queryFirst<T = any>(sql: string, params: any[] = []): Promise<T | null> {
+export async function queryFirst<T = unknown>(sql: string, params: unknown[] = []): Promise<T | null> {
   const rows = await query<T>(sql, params);
   return rows.length > 0 ? rows[0] : null;
 }
@@ -93,7 +103,7 @@ export async function queryFirst<T = any>(sql: string, params: any[] = []): Prom
 /**
  * Execute an INSERT / UPDATE / DELETE query
  */
-export async function execute(sql: string, params: any[] = []): Promise<{ success: boolean }> {
+export async function execute(sql: string, params: unknown[] = []): Promise<{ success: boolean }> {
   const db = await getD1Binding();
 
   if (db) {
