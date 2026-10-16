@@ -9,13 +9,13 @@
     <img src="https://img.shields.io/badge/-Vapi-white?style=for-the-badge&color=5dfeca" alt="vapi" />
     <img src="https://img.shields.io/badge/-Tailwind_CSS-black?style=for-the-badge&logoColor=white&logo=tailwindcss&color=06B6D4" alt="tailwindcss" />
     <img src="https://img.shields.io/badge/-Firebase-black?style=for-the-badge&logoColor=white&logo=firebase&color=DD2C00" alt="firebase" />
-    <img src="https://img.shields.io/badge/-Gemini_AI-blue?style=for-the-badge&logoColor=white&logo=google&color=4285F4" alt="gemini" />
+    <img src="https://img.shields.io/badge/-Groq_AI-orange?style=for-the-badge&logoColor=white&color=F55036" alt="groq" />
   </div>
 
  
   
   <p align="center">
-    Voice Interviews, ATS Resume Analysis, and Detailed Feedback â€” all powered by AI.
+    Voice Interviews, ATS Resume Analysis, and Detailed Feedback — all powered by AI.
   </p>
 </div>
 
@@ -29,16 +29,16 @@
 
 ## <a name="introduction">🤖 Introduction</a>
 
-Prepwise is a cutting-edge platform designed to help you ace your job interviews. Built with the latest tech stack, it simulates real-time voice interviews using Vapi AI, analyzes your resume for ATS friendliness using Google Gemini, and provides comprehensive feedback to help you improve.
+Prepwise is a cutting-edge platform designed to help you ace your job interviews. Built with the latest tech stack, it simulates real-time voice interviews using Vapi AI, analyzes your resume for ATS friendliness using Groq AI (Llama 3.3 70B), and provides comprehensive feedback to help you improve.
 
 ## <a name="tech-stack">⚙️ Tech Stack</a>
 
 - **Frontend**: Next.js 15 (Turbopack), Tailwind CSS, Shadcn/UI
 - **Backend**: Next.js Server Actions
-- **Database & Auth**: Firebase (Admin SDK & Client SDK)
+- **Database & Auth**: Cloudflare D1 & Edge JWT Auth
 - **AI & Voice**: 
     -   **Vapi AI**: Real-time voice conversational agents.
-    -   **Google Gemini**: Resume analysis and feedback generation.
+    -   **Groq AI**: Question generation, ATS resume analysis, and interview feedback (`llama-3.3-70b-versatile`).
 - **Utilities**: 
     -   `react-to-print`: PDF generation.
     -   `pdf-parse`: Resume text extraction.
@@ -52,7 +52,7 @@ Conduct real-time, conversational interviews with an AI agent. It feels just lik
 
 ### 2. 📝 ATS Resume Analysis
 Upload your PDF resume and get an instant score (out of 10). The AI checks for ATS friendliness and suggests specific improvements to help you get shortlisted.
-*(Powered by Google Gemini)*.
+*(Powered by Groq AI)*.
 
 ### 3. 📊 Smart Feedback & PDF Download
 After your interview, receive a detailed breakdown of your performance:
@@ -64,7 +64,7 @@ After your interview, receive a detailed breakdown of your performance:
 Keep track of all your completed interviews on the dashboard. Monitor your progress over time.
 
 ### 5. 🔐 Secure Authentication
-Seamless sign-up and sign-in using Firebase Authentication.
+Fast edge session authentication with bcrypt-ts and jose JWT cookies.
 
 ## <a name="quick-start">🤸 Quick Start</a>
 
@@ -79,11 +79,11 @@ Seamless sign-up and sign-in using Firebase Authentication.
     npm install
     ```
 
-3.  **Set Up Environment Variables** (`.env.local`)
+3.  **Set Up Environment Variables** (`.env`)
     ```env
     NEXT_PUBLIC_VAPI_WEB_TOKEN=your_vapi_public_key
     NEXT_PUBLIC_VAPI_WORKFLOW_ID=your_vapi_assistant_id
-    GOOGLE_GENERATIVE_AI_API_KEY=your_gemini_key
+    GROQ_API_KEY=your_groq_api_key
     # ... Firebase config ...
     ```
 

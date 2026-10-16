@@ -1,5 +1,5 @@
 import { generateText } from "ai";
-import { google } from "@ai-sdk/google";
+import { groq } from "@ai-sdk/groq";
 
 import { execute } from "@/lib/db";
 import { getRandomInterviewCover } from "@/lib/utils";
@@ -9,7 +9,7 @@ export async function POST(request: Request) {
 
   try {
     const { text: questions } = await generateText({
-      model: google("gemini-2.0-flash-001"),
+      model: groq("llama-3.3-70b-versatile"),
       prompt: `Prepare questions for a job interview.
         The job role is ${role}.
         The job experience level is ${level}.
@@ -28,7 +28,19 @@ export async function POST(request: Request) {
     const interviewId = crypto.randomUUID();
     const createdAt = new Date().toISOString();
     const coverImage = getRandomInterviewCover();
-    const parsedQuestions = JSON.parse(questions);
+    
+    let parsedQuestions: string[] = [];
+    try {
+      parsedQuestions = JSON.parse(questions);
+    } catch {
+      const match = questions.match(/\[[\s\S]*\]/);
+      if (match) {
+        parsedQuestions = JSON.parse(match[0]);
+      } else {
+        throw new Error("Could not parse generated questions into JSON");
+      }
+    }
+
     const techstackArray = typeof techstack === "string" ? techstack.split(",").map((s) => s.trim()) : techstack;
 
     await execute(

@@ -100,3 +100,39 @@ interface InterviewFormProps {
 interface TechIconProps {
   techStack: string[];
 }
+
+interface MissingKeyword {
+  keyword: string;
+  category: "technical" | "soft-skills" | "domain" | "tools";
+  priority: "critical" | "important" | "bonus";
+  whyNeeded: string;
+}
+
+interface ResumeFlaw {
+  category: "impact" | "formatting" | "brevity" | "skills" | "contact";
+  flaw: string;
+  suggestion: string;
+  exampleRewrite?: string;
+}
+
+interface DetailedResumeAnalysis {
+  overallMatchScore: number;
+  atsScore: number;
+  isAtsFriendly: boolean;
+  atsSummary: string;
+  targetRoleMatch: {
+    targetRole: string;
+    detectedRole: string;
+    alignmentScore: number;
+    roleFeedback: string;
+  };
+  missingKeywords: MissingKeyword[];
+  matchingKeywords: string[];
+  flawsAndFixes: ResumeFlaw[];
+  quantifiableImpactScore: number;
+  actionVerbScore: number;
+  verdict: "Strong Match" | "Moderate Match" | "Needs Optimization" | "High Risk of Rejection";
+  shortlistProbability: number;
+  keyRecommendations: string[];
+  suggestedLatexCode: string;
+}
