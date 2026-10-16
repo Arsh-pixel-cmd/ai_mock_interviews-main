@@ -1,22 +1,31 @@
 "use server";
 
-import { auth, db } from "@/firebase/admin";
 import { cookies } from "next/headers";
+import { SignJWT, jwtVerify } from "jose";
+import { hashSync, compareSync } from "bcrypt-ts";
+import { queryFirst, execute } from "@/lib/db";
 
-// Session duration (1 week)
+// Session duration: 7 days
 const SESSION_DURATION = 60 * 60 * 24 * 7;
+const JWT_SECRET = new TextEncoder().encode(
+  process.env.AUTH_SECRET || "prepwise-cloudflare-secret-key-change-in-production-min-32-chars"
+);
 
-// Set session cookie
-export async function setSessionCookie(idToken: string) {
+// Create and set JWT session cookie
+export async function setSessionCookie(user: { id: string; name: string; email: string }) {
   const cookieStore = await cookies();
 
-  // Create session cookie
-  const sessionCookie = await auth.createSessionCookie(idToken, {
-    expiresIn: SESSION_DURATION * 1000, // milliseconds
-  });
+  const token = await new SignJWT({
+    name: user.name,
+    email: user.email,
+  })
+    .setProtectedHeader({ alg: "HS256" })
+    .setSubject(user.id)
+    .setIssuedAt()
+    .setExpirationTime(`${SESSION_DURATION}s`)
+    .sign(JWT_SECRET);
 
-  // Set cookie in the browser
-  cookieStore.set("session", sessionCookie, {
+  cookieStore.set("session", token, {
     maxAge: SESSION_DURATION,
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
@@ -26,65 +35,81 @@ export async function setSessionCookie(idToken: string) {
 }
 
 export async function signUp(params: SignUpParams) {
-  const { uid, name, email } = params;
+  const { name, email, password } = params;
 
   try {
-    // check if user exists in db
-    const userRecord = await db.collection("users").doc(uid).get();
-    if (userRecord.exists)
+    // Check if user already exists
+    const existingUser = await queryFirst<{ id: string }>(
+      "SELECT id FROM users WHERE email = ? LIMIT 1",
+      [email.toLowerCase().trim()]
+    );
+
+    if (existingUser) {
       return {
         success: false,
-        message: "User already exists. Please sign in.",
-      };
-
-    // save user to db
-    await db.collection("users").doc(uid).set({
-      name,
-      email,
-      // profileURL,
-      // resumeURL,
-    });
-
-    return {
-      success: true,
-      message: "Account created successfully. Please sign in.",
-    };
-  } catch (error: any) {
-    console.error("Error creating user:", error);
-
-    // Handle Firebase specific errors
-    if (error.code === "auth/email-already-exists") {
-      return {
-        success: false,
-        message: "This email is already in use",
+        message: "An account with this email already exists. Please sign in.",
       };
     }
 
+    const userId = crypto.randomUUID();
+    const hashedPassword = hashSync(password, 10);
+    const createdAt = new Date().toISOString();
+
+    await execute(
+      "INSERT INTO users (id, name, email, password, createdAt) VALUES (?, ?, ?, ?, ?)",
+      [userId, name.trim(), email.toLowerCase().trim(), hashedPassword, createdAt]
+    );
+
+    await setSessionCookie({ id: userId, name: name.trim(), email: email.toLowerCase().trim() });
+
+    return {
+      success: true,
+      message: "Account created successfully.",
+    };
+  } catch (error: any) {
+    console.error("Error creating user:", error);
     return {
       success: false,
-      message: "Failed to create account. Please try again.",
+      message: error?.message || "Failed to create account. Please try again.",
     };
   }
 }
 
 export async function signIn(params: SignInParams) {
-  const { email, idToken } = params;
+  const { email, password } = params;
 
   try {
-    const userRecord = await auth.getUserByEmail(email);
-    if (!userRecord)
+    const user = await queryFirst<{ id: string; name: string; email: string; password: string }>(
+      "SELECT id, name, email, password FROM users WHERE email = ? LIMIT 1",
+      [email.toLowerCase().trim()]
+    );
+
+    if (!user) {
       return {
         success: false,
-        message: "User does not exist. Create an account.",
+        message: "No account found with this email. Please sign up.",
       };
+    }
 
-    await setSessionCookie(idToken);
-  } catch (error: any) {
-    console.log("");
+    const isPasswordValid = compareSync(password, user.password);
+    if (!isPasswordValid) {
+      return {
+        success: false,
+        message: "Invalid password. Please try again.",
+      };
+    }
+
+    await setSessionCookie({ id: user.id, name: user.name, email: user.email });
 
     return {
+      success: true,
+      message: "Signed in successfully.",
+    };
+  } catch (error: any) {
+    console.error("Error signing in:", error);
+    return {
       success: false,
-      message: "Failed to log into account. Please try again.",
+      message: "Failed to log in. Please try again.",
     };
   }
 }
@@ -92,41 +117,34 @@ export async function signIn(params: SignInParams) {
 // Sign out user by clearing the session cookie
 export async function signOut() {
   const cookieStore = await cookies();
-
   cookieStore.delete("session");
 }
 
 // Get current user from session cookie
 export async function getCurrentUser(): Promise<User | null> {
   const cookieStore = await cookies();
+  const sessionToken = cookieStore.get("session")?.value;
 
-  const sessionCookie = cookieStore.get("session")?.value;
-  if (!sessionCookie) return null;
+  if (!sessionToken) return null;
 
   try {
-    const decodedClaims = await auth.verifySessionCookie(sessionCookie, true);
+    const { payload } = await jwtVerify(sessionToken, JWT_SECRET);
 
-    // get user info from db
-    const userRecord = await db
-      .collection("users")
-      .doc(decodedClaims.uid)
-      .get();
-    if (!userRecord.exists) return null;
+    if (!payload.sub) return null;
 
     return {
-      ...userRecord.data(),
-      id: userRecord.id,
-    } as User;
-  } catch (error) {
-    console.log(error);
-
-    // Invalid or expired session
+      id: payload.sub,
+      name: (payload.name as string) || "",
+      email: (payload.email as string) || "",
+    };
+  } catch {
+    // Expired or invalid session token
     return null;
   }
 }
 
 // Check if user is authenticated
-export async function isAuthenticated() {
+export async function isAuthenticated(): Promise<boolean> {
   const user = await getCurrentUser();
   return !!user;
 }

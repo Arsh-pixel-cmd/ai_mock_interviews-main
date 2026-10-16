@@ -1,7 +1,7 @@
 import { generateText } from "ai";
 import { google } from "@ai-sdk/google";
 
-import { db } from "@/firebase/admin";
+import { execute } from "@/lib/db";
 import { getRandomInterviewCover } from "@/lib/utils";
 
 export async function POST(request: Request) {
@@ -25,23 +25,30 @@ export async function POST(request: Request) {
     `,
     });
 
-    const interview = {
-      role: role,
-      type: type,
-      level: level,
-      techstack: techstack.split(","),
-      questions: JSON.parse(questions),
-      userId: userid,
-      finalized: true,
-      coverImage: getRandomInterviewCover(),
-      createdAt: new Date().toISOString(),
-    };
+    const interviewId = crypto.randomUUID();
+    const createdAt = new Date().toISOString();
+    const coverImage = getRandomInterviewCover();
+    const parsedQuestions = JSON.parse(questions);
+    const techstackArray = typeof techstack === "string" ? techstack.split(",").map((s) => s.trim()) : techstack;
 
-    await db.collection("interviews").add(interview);
+    await execute(
+      "INSERT INTO interviews (id, role, type, level, techstack, questions, userId, finalized, coverImage, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
+      [
+        interviewId,
+        role,
+        type,
+        level,
+        JSON.stringify(techstackArray),
+        JSON.stringify(parsedQuestions),
+        userid,
+        coverImage,
+        createdAt,
+      ]
+    );
 
-    return Response.json({ success: true }, { status: 200 });
+    return Response.json({ success: true, interviewId }, { status: 200 });
   } catch (error) {
-    console.error("Error:", error);
+    console.error("Error generating interview:", error);
     return Response.json({ success: false, error: error }, { status: 500 });
   }
 }

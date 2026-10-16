@@ -3,8 +3,37 @@
 import { generateObject } from "ai";
 import { google } from "@ai-sdk/google";
 
-import { db } from "@/firebase/admin";
+import { query, queryFirst, execute } from "@/lib/db";
 import { feedbackSchema } from "@/constants";
+
+function parseInterviewRow(row: any): Interview {
+  return {
+    id: row.id,
+    role: row.role,
+    type: row.type,
+    level: row.level,
+    userId: row.userId,
+    finalized: Boolean(row.finalized),
+    coverImage: row.coverImage,
+    createdAt: row.createdAt,
+    techstack: typeof row.techstack === "string" ? JSON.parse(row.techstack) : row.techstack,
+    questions: typeof row.questions === "string" ? JSON.parse(row.questions) : row.questions,
+  };
+}
+
+function parseFeedbackRow(row: any): Feedback {
+  return {
+    id: row.id,
+    interviewId: row.interviewId,
+    userId: row.userId,
+    totalScore: Number(row.totalScore),
+    finalAssessment: row.finalAssessment,
+    createdAt: row.createdAt,
+    categoryScores: typeof row.categoryScores === "string" ? JSON.parse(row.categoryScores) : row.categoryScores,
+    strengths: typeof row.strengths === "string" ? JSON.parse(row.strengths) : row.strengths,
+    areasForImprovement: typeof row.areasForImprovement === "string" ? JSON.parse(row.areasForImprovement) : row.areasForImprovement,
+  };
+}
 
 export async function createFeedback(params: CreateFeedbackParams) {
   const { interviewId, userId, transcript, feedbackId } = params;
@@ -36,33 +65,35 @@ export async function createFeedback(params: CreateFeedbackParams) {
         "You are a professional interviewer analyzing a mock interview. Your task is to evaluate the candidate based on structured categories",
     });
 
-    const feedback = {
-      interviewId: interviewId,
-      userId: userId,
-      totalScore: object.totalScore,
-      categoryScores: object.categoryScores,
-      strengths: object.strengths,
-      areasForImprovement: object.areasForImprovement,
-      finalAssessment: object.finalAssessment,
-      createdAt: new Date().toISOString(),
-    };
+    const targetFeedbackId = feedbackId || crypto.randomUUID();
+    const createdAt = new Date().toISOString();
 
-    let feedbackRef;
+    await execute(
+      `INSERT INTO feedback (id, interviewId, userId, totalScore, categoryScores, strengths, areasForImprovement, finalAssessment, createdAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         totalScore = excluded.totalScore,
+         categoryScores = excluded.categoryScores,
+         strengths = excluded.strengths,
+         areasForImprovement = excluded.areasForImprovement,
+         finalAssessment = excluded.finalAssessment`,
+      [
+        targetFeedbackId,
+        interviewId,
+        userId,
+        object.totalScore,
+        JSON.stringify(object.categoryScores),
+        JSON.stringify(object.strengths),
+        JSON.stringify(object.areasForImprovement),
+        object.finalAssessment,
+        createdAt,
+      ]
+    );
 
-    if (feedbackId) {
-      feedbackRef = db.collection("feedback").doc(feedbackId);
-    } else {
-      feedbackRef = db.collection("feedback").doc();
-    }
-
-    await feedbackRef.set(feedback);
-    
     // Update interview status to finalized
-    await db.collection("interviews").doc(interviewId).update({
-      finalized: true,
-    });
+    await execute("UPDATE interviews SET finalized = 1 WHERE id = ?", [interviewId]);
 
-    return { success: true, feedbackId: feedbackRef.id };
+    return { success: true, feedbackId: targetFeedbackId };
   } catch (error) {
     console.error("Error saving feedback:", error);
     return { success: false };
@@ -70,9 +101,9 @@ export async function createFeedback(params: CreateFeedbackParams) {
 }
 
 export async function getInterviewById(id: string): Promise<Interview | null> {
-  const interview = await db.collection("interviews").doc(id).get();
-
-  return interview.data() as Interview | null;
+  const row = await queryFirst("SELECT * FROM interviews WHERE id = ? LIMIT 1", [id]);
+  if (!row) return null;
+  return parseInterviewRow(row);
 }
 
 export async function getFeedbackByInterviewId(
@@ -80,17 +111,13 @@ export async function getFeedbackByInterviewId(
 ): Promise<Feedback | null> {
   const { interviewId, userId } = params;
 
-  const querySnapshot = await db
-    .collection("feedback")
-    .where("interviewId", "==", interviewId)
-    .where("userId", "==", userId)
-    .limit(1)
-    .get();
+  const row = await queryFirst(
+    "SELECT * FROM feedback WHERE interviewId = ? AND userId = ? LIMIT 1",
+    [interviewId, userId]
+  );
 
-  if (querySnapshot.empty) return null;
-
-  const feedbackDoc = querySnapshot.docs[0];
-  return { id: feedbackDoc.id, ...feedbackDoc.data() } as Feedback;
+  if (!row) return null;
+  return parseFeedbackRow(row);
 }
 
 export async function getLatestInterviews(
@@ -98,31 +125,21 @@ export async function getLatestInterviews(
 ): Promise<Interview[] | null> {
   const { userId, limit = 20 } = params;
 
-  const interviews = await db
-    .collection("interviews")
-    .orderBy("createdAt", "desc")
-    .where("finalized", "==", true)
-    .where("userId", "!=", userId)
-    .limit(limit)
-    .get();
+  const rows = await query(
+    "SELECT * FROM interviews WHERE finalized = 1 AND userId != ? ORDER BY createdAt DESC LIMIT ?",
+    [userId, limit]
+  );
 
-  return interviews.docs.map((doc) => ({
-    id: doc.id,
-    ...doc.data(),
-  })) as Interview[];
+  return rows.map(parseInterviewRow);
 }
 
 export async function getInterviewsByUserId(
   userId: string
 ): Promise<Interview[] | null> {
-  const interviews = await db
-    .collection("interviews")
-    .where("userId", "==", userId)
-    .orderBy("createdAt", "desc")
-    .get();
+  const rows = await query(
+    "SELECT * FROM interviews WHERE userId = ? ORDER BY createdAt DESC",
+    [userId]
+  );
 
-  return interviews.docs.map((doc) => ({
-    id: doc.id,
-    ...doc.data(),
-  })) as Interview[];
+  return rows.map(parseInterviewRow);
 }
