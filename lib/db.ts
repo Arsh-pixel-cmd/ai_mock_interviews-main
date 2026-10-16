@@ -11,6 +11,7 @@ interface D1Result<T = any> {
 // Helper to get native Cloudflare binding if available
 async function getD1Binding(): Promise<any | null> {
   try {
+    const { getCloudflareContext } = await import("@opennextjs/cloudflare");
     const ctx = await getCloudflareContext({ async: true });
     const dbBinding = (ctx?.env as any)?.DB;
     if (dbBinding) {
