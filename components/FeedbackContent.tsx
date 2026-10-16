@@ -13,10 +13,10 @@ import ResumeAnalyzer from "@/components/ResumeAnalyzer";
 interface FeedbackContentProps {
   feedback: Feedback;
   interview: Interview;
-  feedbackId: string;
+  feedbackId?: string;
 }
 
-const FeedbackContent = ({ feedback, interview, feedbackId }: FeedbackContentProps) => {
+const FeedbackContent = ({ feedback, interview }: FeedbackContentProps) => {
   const contentRef = useRef<HTMLDivElement>(null);
   
   const handlePrint = useReactToPrint({

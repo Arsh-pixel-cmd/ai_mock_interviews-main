@@ -66,11 +66,12 @@ export async function signUp(params: SignUpParams) {
       success: true,
       message: "Account created successfully.",
     };
-  } catch (error: any) {
+  } catch (error) {
     console.error("Error creating user:", error);
+    const message = error instanceof Error ? error.message : "Failed to create account. Please try again.";
     return {
       success: false,
-      message: error?.message || "Failed to create account. Please try again.",
+      message,
     };
   }
 }
@@ -105,7 +106,7 @@ export async function signIn(params: SignInParams) {
       success: true,
       message: "Signed in successfully.",
     };
-  } catch (error: any) {
+  } catch (error) {
     console.error("Error signing in:", error);
     return {
       success: false,

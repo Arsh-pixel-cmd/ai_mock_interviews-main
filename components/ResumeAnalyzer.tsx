@@ -5,7 +5,6 @@ import { Loader2, Upload, CheckCircle, XCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { analyzeResume } from "@/lib/actions/resume.action";
-import { cn } from "@/lib/utils";
 
 interface AnalysisResult {
   score: number;
