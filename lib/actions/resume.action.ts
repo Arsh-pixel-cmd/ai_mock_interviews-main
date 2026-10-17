@@ -30,7 +30,7 @@ const detailedAnalysisSchema = z.object({
   missingKeywords: z.array(
     z.object({
       keyword: z.string().describe("Missing keyword or skill from JD"),
-      category: z.enum(["technical", "soft-skills", "domain", "tools"]),
+      category: z.string().describe("technical, soft-skills, domain, or tools"),
       priority: z.enum(["critical", "important", "bonus"]),
       whyNeeded: z.string().describe("Why this keyword is critical for this JD"),
     })
@@ -38,7 +38,7 @@ const detailedAnalysisSchema = z.object({
   matchingKeywords: z.array(z.string()).describe("Keywords found in both JD and resume"),
   flawsAndFixes: z.array(
     z.object({
-      category: z.enum(["impact", "formatting", "brevity", "skills", "contact"]),
+      category: z.string().describe("Category: impact, formatting, brevity, skills, contact, action verbs, or metrics"),
       flaw: z.string().describe("Specific weakness or flaw detected in the resume"),
       suggestion: z.string().describe("Actionable fix to resolve this flaw"),
       exampleRewrite: z.string().describe("Concrete before/after bullet rewrite example, or empty string if not applicable"),
@@ -258,13 +258,18 @@ ${resumeText}
 === INSTRUCTIONS ===
 1. Analyze how well the resume matches the JD (overallMatchScore from 0 to 100).
 2. Evaluate ATS friendliness (atsScore 0 to 10). Check if standard headings, no weird tables/graphics, simple text parsing work.
-3. Identify up to 15 most critical MISSING KEYWORDS and technologies from the JD that the candidate did NOT explicitly mention. Categorize them (technical, soft-skills, domain, tools) with priority and concise whyNeeded reason.
+3. Identify up to 10-12 most critical MISSING KEYWORDS and technologies from the JD. For each keyword: category is a short string (e.g. technical, soft-skills, domain, tools), priority MUST be exactly "critical", "important", or "bonus", and whyNeeded is a concise explanation.
 4. List MATCHING KEYWORDS already present in both JD and resume.
-5. Identify up to 5 specific RESUME FLAWS: weak action verbs (e.g. "responsible for", "helped"), lack of quantifiable impact (missing % numbers, scale, latency improvements), formatting risks, or fluff. Provide concrete before-and-after rewrite examples for each flaw!
+5. Identify up to 4 specific RESUME FLAWS. Each flaw MUST be a complete object containing all 4 fields:
+   - "category": short category string (e.g. "impact", "action verbs", "formatting", "skills", "brevity")
+   - "flaw": description of the specific flaw
+   - "suggestion": actionable recommendation to fix it
+   - "exampleRewrite": concrete before-and-after bullet rewrite example (or empty string if not applicable)
 6. Calculate quantifiableImpactScore (0-10) and actionVerbScore (0-10).
-7. Calculate shortlistProbability (0-100%) reflecting real-world chances of passing both automated ATS and the hiring manager's 6-second scan.
-8. Provide top 3-5 immediate keyRecommendations.
-9. For suggestedLatexCode, return an empty string ("") because full LaTeX resumes are generated separately.
+7. Calculate shortlistProbability (0-100%).
+8. Set verdict to exactly one of: "Strong Match", "Moderate Match", "Needs Optimization", or "High Risk of Rejection".
+9. Provide top 3-5 immediate keyRecommendations.
+10. Return an empty string ("") for suggestedLatexCode.
       `,
     });
 

@@ -103,13 +103,13 @@ interface TechIconProps {
 
 interface MissingKeyword {
   keyword: string;
-  category: "technical" | "soft-skills" | "domain" | "tools";
+  category: string;
   priority: "critical" | "important" | "bonus";
   whyNeeded: string;
 }
 
 interface ResumeFlaw {
-  category: "impact" | "formatting" | "brevity" | "skills" | "contact";
+  category: string;
   flaw: string;
   suggestion: string;
   exampleRewrite?: string;
