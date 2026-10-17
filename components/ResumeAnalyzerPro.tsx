@@ -232,7 +232,7 @@ export default function ResumeAnalyzerPro({
               <div className="flex flex-col gap-1">
                 <h2 className="text-2xl sm:text-3xl font-bold text-white flex items-center gap-2">
                   <Sparkles className="text-primary-200" size={26} />
-                  AI Resume & Job Description Matcher
+                  Resume & Job Description Matcher
                 </h2>
                 <p className="text-sm text-light-100">
                   Upload your candidate resume and specify the target Job Description to detect
@@ -359,7 +359,7 @@ export default function ResumeAnalyzerPro({
               {/* Action Button */}
               <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2 border-t border-white/5">
                 <p className="text-xs text-light-400">
-                  Powered by Groq AI (Llama 3.3 70B) • Multi-factor ATS rubric evaluation
+                  Multi-factor ATS rubric evaluation • Powered by Llama 3.3 70B
                 </p>
 
                 <Button
@@ -482,7 +482,7 @@ export default function ResumeAnalyzerPro({
                       Ready to fix flaws and achieve a 95%+ shortlist score?
                     </h4>
                     <p className="text-xs text-light-100">
-                      Groq AI generated an ATS-optimized LaTeX resume for you with missing keywords
+                      An ATS-optimized LaTeX resume has been generated with missing keywords
                       integrated.
                     </p>
                   </div>
@@ -724,7 +724,7 @@ export default function ResumeAnalyzerPro({
                 <div className="text-center">
                   <p className="text-white font-bold text-lg">Converting Resume to LaTeX</p>
                   <p className="text-light-400 text-sm mt-1 max-w-xs">
-                    AI is analyzing your resume and generating ATS-optimized LaTeX code...
+                    Analyzing your resume and generating ATS-optimized LaTeX code...
                   </p>
                 </div>
                 {/* Progress bar animation */}
