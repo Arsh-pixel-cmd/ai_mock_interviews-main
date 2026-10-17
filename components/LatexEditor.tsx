@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useTransition } from "react";
+import { useState, useRef, useTransition, useEffect } from "react";
 import { useReactToPrint } from "react-to-print";
 import {
   Download,
@@ -33,6 +33,7 @@ interface LatexEditorProps {
   missingKeywords?: MissingKeyword[];
   jobDescription?: string;
   targetRole?: string;
+  onLatexChange?: (latex: string) => void;
 }
 
 export default function LatexEditor({
@@ -40,6 +41,7 @@ export default function LatexEditor({
   missingKeywords = [],
   jobDescription = "",
   targetRole = "",
+  onLatexChange,
 }: LatexEditorProps) {
   const [latexCode, setLatexCode] = useState<string>(initialLatex || DEFAULT_LATEX_TEMPLATE);
   const [viewMode, setViewMode] = useState<"split" | "code" | "preview">("split");
@@ -51,6 +53,20 @@ export default function LatexEditor({
 
   const printRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Sync latexCode when initialLatex updates from parent
+  useEffect(() => {
+    if (initialLatex) {
+      setLatexCode(initialLatex);
+    }
+  }, [initialLatex]);
+
+  const handleCodeChange = (newCode: string) => {
+    setLatexCode(newCode);
+    if (onLatexChange) {
+      onLatexChange(newCode);
+    }
+  };
 
   // React-to-print hook for 1-click A4 PDF export
   const handlePrint = useReactToPrint({
@@ -353,7 +369,7 @@ export default function LatexEditor({
               <textarea
                 ref={textareaRef}
                 value={latexCode}
-                onChange={(e) => setLatexCode(e.target.value)}
+                onChange={(e) => handleCodeChange(e.target.value)}
                 spellCheck={false}
                 placeholder="Enter or paste your LaTeX code here..."
                 className="w-full h-full p-3 bg-transparent text-light-100 font-mono text-xs leading-[1.625rem] resize-none focus:outline-none selection:bg-primary-200/30 selection:text-white overflow-y-auto whitespace-pre tab-[2]"

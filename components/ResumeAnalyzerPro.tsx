@@ -27,7 +27,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import LatexEditor from "@/components/LatexEditor";
-import { analyzeResumeWithJD } from "@/lib/actions/resume.action";
+import { analyzeResumeWithJD, convertResumeToLatexAction } from "@/lib/actions/resume.action";
 import { DEFAULT_LATEX_TEMPLATE } from "@/constants";
 
 interface ResumeAnalyzerProProps {
@@ -132,6 +132,40 @@ export default function ResumeAnalyzerPro({
     });
   };
 
+  // Open LaTeX Studio & guarantee automatic conversion from uploaded resume if not already done
+  const handleOpenLatexStudio = () => {
+    setActiveTab("latex");
+
+    // If analysis already pre-generated customized LaTeX, ensure it's loaded
+    if (analysis?.suggestedLatexCode) {
+      setLatexCode(analysis.suggestedLatexCode);
+      return;
+    }
+
+    // If user has uploaded a file or entered text, but latexCode is still the default template, convert automatically
+    if (
+      (file || (resumeText && resumeText.trim().length >= 30)) &&
+      latexCode === DEFAULT_LATEX_TEMPLATE
+    ) {
+      startTransition(async () => {
+        toast.info("Converting uploaded resume into ATS LaTeX format...");
+        const formData = new FormData();
+        if (file) formData.append("resume", file);
+        if (resumeText) formData.append("resumeText", resumeText);
+        formData.append("targetRole", targetRole);
+        formData.append("jobDescription", jobDescription);
+
+        const res = await convertResumeToLatexAction(formData);
+        if (res.success && res.latex) {
+          setLatexCode(res.latex);
+          toast.success("Resume successfully converted to LaTeX!");
+        } else {
+          toast.error(res.error || "Could not convert resume automatically.");
+        }
+      });
+    }
+  };
+
   // Filter missing keywords
   const filteredKeywords = analysis?.missingKeywords.filter((k) => {
     if (keywordFilter === "all") return true;
@@ -154,7 +188,7 @@ export default function ResumeAnalyzerPro({
             <Briefcase size={16} /> 1. ATS & JD Analyzer
           </button>
           <button
-            onClick={() => setActiveTab("latex")}
+            onClick={handleOpenLatexStudio}
             className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all ${
               activeTab === "latex"
                 ? "bg-primary-200 text-dark-100 shadow-md font-bold"
@@ -162,7 +196,7 @@ export default function ResumeAnalyzerPro({
             }`}
           >
             <FileCode size={16} /> 2. LaTeX Studio & PDF Export
-            {analysis?.suggestedLatexCode && (
+            {(analysis?.suggestedLatexCode || latexCode !== DEFAULT_LATEX_TEMPLATE) && (
               <span className="w-2 h-2 rounded-full bg-success-100 animate-pulse" />
             )}
           </button>
@@ -443,7 +477,7 @@ export default function ResumeAnalyzerPro({
                   </div>
                 </div>
                 <Button
-                  onClick={() => setActiveTab("latex")}
+                  onClick={handleOpenLatexStudio}
                   className="btn-primary flex items-center gap-2 whitespace-nowrap text-xs"
                 >
                   Edit in LaTeX Studio & Export PDF <ArrowRight size={14} />
@@ -650,6 +684,7 @@ export default function ResumeAnalyzerPro({
             missingKeywords={analysis?.missingKeywords || []}
             jobDescription={jobDescription}
             targetRole={targetRole}
+            onLatexChange={setLatexCode}
           />
         </div>
       )}
