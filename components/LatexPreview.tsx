@@ -5,6 +5,7 @@ import React, { forwardRef, useMemo } from "react";
 interface LatexPreviewProps {
   latex: string;
   zoom?: number;
+  editable?: boolean;
 }
 
 interface ParsedEntry {
@@ -144,9 +145,10 @@ function tokenizeInlineLatex(text: string): InlineToken[] {
         .replace(/--/g, "–")
         .replace(/\\textbullet|\$\\bullet\$/g, "•")
         .replace(/\\(?:\s+|$)/g, " ")
-        .replace(/\\(?:small|footnotesize|large|Large|LARGE|Huge|huge|scshape|itshape|bfseries|noindent|centering)\b/g, "");
+        .replace(/\\(?:small|footnotesize|large|Large|LARGE|Huge|huge|scshape|itshape|bfseries|noindent|centering)\b/g, "")
+        .replace(/[{}]/g, "");
 
-      if (cleaned) {
+      if (cleaned.trim()) {
         tokens.push({ type: "text", value: cleaned });
       }
       currentText = "";
@@ -264,6 +266,26 @@ function tokenizeInlineLatex(text: string): InlineToken[] {
       }
     }
 
+    // 6b. \textsuperscript{...} and \textsubscript{...}
+    if (clean.startsWith("\\textsuperscript", i) || clean.startsWith("\\textsubscript", i)) {
+      const isSup = clean.startsWith("\\textsuperscript", i);
+      const braceIdx = clean.indexOf("{", i);
+      if (braceIdx !== -1 && braceIdx <= i + 18) {
+        const part = getBalancedBraceContent(clean, braceIdx);
+        if (part) {
+          flushText();
+          tokens.push({
+            type: "text",
+            value: part.content,
+            superscript: isSup,
+            subscript: !isSup,
+          } as any);
+          i = part.endIndex + 1;
+          continue;
+        }
+      }
+    }
+
     // 7. Pipe separators ($|$, $\mid$, \textbar, |)
     if (
       clean.startsWith("$|$", i) ||
@@ -276,11 +298,35 @@ function tokenizeInlineLatex(text: string): InlineToken[] {
       continue;
     }
 
-    // 8. Line breaks \\
+    // 8. Line breaks \\ (with optional [Xpt] spacing)
     if (clean.startsWith("\\\\", i)) {
       flushText();
       tokens.push({ type: "newline" });
       i += 2;
+      // Skip optional spacing like [1pt], [3pt]
+      const afterBreak = clean.slice(i).match(/^\s*\[[^\]]*\]/);
+      if (afterBreak) {
+        i += afterBreak[0].length;
+      }
+      continue;
+    }
+
+    // 9. Handle bare brace groups {content} — recursively tokenize inner content
+    if (clean[i] === '{') {
+      const part = getBalancedBraceContent(clean, i);
+      if (part) {
+        flushText();
+        const innerTokens = tokenizeInlineLatex(part.content);
+        tokens.push(...innerTokens);
+        i = part.endIndex + 1;
+        continue;
+      }
+    }
+
+    // 10. Skip stray closing braces
+    if (clean[i] === '}') {
+      flushText();
+      i++;
       continue;
     }
 
@@ -300,8 +346,12 @@ function renderTokensToReact(tokens: InlineToken[], keyPrefix = "tok"): React.Re
   return tokens.map((token, idx) => {
     const key = `${keyPrefix}-${idx}`;
     switch (token.type) {
-      case "text":
+      case "text": {
+        const t = token as any;
+        if (t.superscript) return <sup key={key} className="text-[0.7em]">{token.value}</sup>;
+        if (t.subscript) return <sub key={key} className="text-[0.7em]">{token.value}</sub>;
         return <span key={key}>{token.value}</span>;
+      }
       case "bold":
         return (
           <strong key={key} className="font-bold text-gray-950 font-serif">
@@ -414,7 +464,7 @@ function parseSectionContent(rawContent: string): ParsedEntry[] {
   if (hasTabular) return entries;
 
   // Environment-aware itemize scanner
-  const tokenRegex = /(\\begin\{itemize\}(?:\[[^\]]*\])?|\\end\{itemize\}|\\item\b)/g;
+  const tokenRegex = /(\\begin\{itemize\}(?:\[(?:[^\[\]]*|\{[^}]*\})*\])?|\\end\{itemize\}|\\item\b)/g;
   const tokens: { type: "begin" | "end" | "item" | "text"; value?: string }[] = [];
   let lastIdx = 0;
   let m: RegExpExecArray | null;
@@ -584,8 +634,8 @@ function parseLatexResume(latex: string) {
   // Extract contact lines from center block or header
   if (centerMatch) {
     const lines = centerMatch[1]
-      .split(/\\\\/)
-      .map((l) => l.replace(/\\vspace\{[^}]*\}/g, "").trim())
+      .split(/\\\\(?:\s*\[[^\]]*\])?/)
+      .map((l) => l.replace(/\\vspace\{[^}]*\}/g, "").replace(/^\s*\[[^\]]*\]\s*/, "").trim())
       .filter((l) => l.length > 0);
 
     // If first line has the name, the remaining lines are contact info
@@ -666,7 +716,7 @@ function parseLatexResume(latex: string) {
  * with Overleaf / Jake's Resume styling. 100% ATS-parseable and PDF-ready.
  */
 export const LatexPreview = forwardRef<HTMLDivElement, LatexPreviewProps>(
-  ({ latex, zoom = 1 }, ref) => {
+  ({ latex, zoom = 1, editable = false }, ref) => {
     const parsedData = useMemo(() => {
       return parseLatexResume(latex);
     }, [latex]);
@@ -688,7 +738,9 @@ export const LatexPreview = forwardRef<HTMLDivElement, LatexPreviewProps>(
             transform: `scale(${zoom})`,
             transformOrigin: "top center",
           }}
-          className="print-resume-sheet relative w-[210mm] min-h-[297mm] bg-white text-gray-950 font-serif px-[18mm] py-[16mm] shadow-2xl rounded-sm transition-transform duration-150 select-text print:shadow-none print:m-0 print:p-[12mm] print:w-full print:min-h-0 print:transform-none leading-normal"
+          contentEditable={editable}
+          suppressContentEditableWarning={editable}
+          className={`print-resume-sheet relative w-[210mm] min-h-[297mm] bg-white text-gray-950 font-serif px-[18mm] py-[16mm] shadow-2xl rounded-sm transition-transform duration-150 select-text print:shadow-none print:m-0 print:p-[12mm] print:w-full print:min-h-0 print:transform-none leading-normal ${editable ? 'outline-none focus:ring-2 focus:ring-blue-300/50 cursor-text' : ''}`}
         >
           {/* Header */}
           <header className="mb-4 text-center">
@@ -729,9 +781,9 @@ export const LatexPreview = forwardRef<HTMLDivElement, LatexPreviewProps>(
                       <div key={eIdx} className="flex flex-col">
                         {/* Entry Header: Left (Title/Role) and Right (Dates/Location) */}
                         {hasRight ? (
-                          <div className="flex justify-between items-baseline text-xs text-gray-950">
-                            <div className="font-semibold">{renderInlineLatex(entry.left)}</div>
-                            <div className="text-right text-[11px] font-normal text-gray-600 whitespace-nowrap ml-2 font-mono">
+                          <div className="flex justify-between items-baseline text-xs text-gray-950 gap-2">
+                            <div className="font-semibold flex-1 min-w-0">{renderInlineLatex(entry.left)}</div>
+                            <div className="text-right text-[11px] font-normal text-gray-600 whitespace-nowrap flex-shrink-0 font-mono">
                               {renderInlineLatex(entry.right)}
                             </div>
                           </div>

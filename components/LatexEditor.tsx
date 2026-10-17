@@ -292,12 +292,12 @@ export default function LatexEditor({
       )}
 
       {/* Main Dual-Pane Studio Body */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-h-[680px]">
+      <div className="flex flex-col lg:flex-row gap-4">
         {/* LEFT: LaTeX Code Editor */}
         {(viewMode === "split" || viewMode === "code") && (
           <div
             className={`flex flex-col bg-dark-100 rounded-2xl border border-white/10 overflow-hidden shadow-xl ${
-              viewMode === "code" ? "lg:col-span-2" : ""
+              viewMode === "code" ? "w-full" : "w-full lg:w-1/2 lg:flex-shrink-0"
             }`}
           >
             {/* Editor Toolbar */}
@@ -381,12 +381,12 @@ export default function LatexEditor({
         {/* RIGHT: Live A4 Resume Render Preview */}
         {(viewMode === "split" || viewMode === "preview") && (
           <div
-            className={`flex flex-col bg-dark-200/40 rounded-2xl border border-white/10 overflow-hidden shadow-xl ${
-              viewMode === "preview" ? "lg:col-span-2" : ""
+            className={`flex flex-col ${
+              viewMode === "preview" ? "w-full" : "w-full lg:w-1/2 lg:sticky lg:top-4 lg:self-start"
             }`}
           >
-            {/* Preview Toolbar */}
-            <div className="flex items-center justify-between px-4 py-2.5 bg-dark-200 border-b border-white/5">
+            {/* Preview Toolbar — slim and minimal */}
+            <div className="flex items-center justify-between px-3 py-2 bg-dark-200/80 rounded-t-xl border border-white/5">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-semibold text-white flex items-center gap-1.5">
                   <Eye size={14} className="text-success-100" /> Live Document Preview
@@ -399,7 +399,7 @@ export default function LatexEditor({
               {/* Zoom Controls */}
               <div className="flex items-center gap-1.5 bg-dark-300 px-2 py-1 rounded-lg border border-white/5">
                 <button
-                  onClick={() => setZoom((z) => Math.max(0.6, Number((z - 0.05).toFixed(2))))}
+                  onClick={() => setZoom((z) => Math.max(0.5, Number((z - 0.05).toFixed(2))))}
                   className="text-light-100 hover:text-white p-0.5"
                   title="Zoom Out"
                 >
@@ -425,9 +425,9 @@ export default function LatexEditor({
               </div>
             </div>
 
-            {/* Scrollable Canvas for A4 Paper */}
-            <div className="flex-1 max-h-[620px] overflow-y-auto overflow-x-auto p-4 bg-neutral-900/80 flex justify-center">
-              <LatexPreview ref={printRef} latex={latexCode} zoom={zoom} />
+            {/* Full-height A4 Paper Canvas — no sandbox */}
+            <div className="overflow-y-auto overflow-x-auto bg-neutral-800/50 flex justify-center py-4 px-2 rounded-b-xl" style={{ maxHeight: 'calc(100vh - 180px)' }}>
+              <LatexPreview ref={printRef} latex={latexCode} zoom={zoom} editable={viewMode === 'preview'} />
             </div>
           </div>
         )}

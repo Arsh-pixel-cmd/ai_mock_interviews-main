@@ -242,7 +242,7 @@ export async function analyzeResumeWithJD(formData: FormData): Promise<{
       model: groq(GROQ_MODEL),
       schema: detailedAnalysisSchema,
       temperature: 0,
-      maxOutputTokens: 3500,
+      maxOutputTokens: 10000,
       prompt: `
 You are an elite Tech Recruiter, ATS (Applicant Tracking System) Specialist, and Career Coach.
 Analyze the candidate's resume strictly against the provided Job Description (JD).
@@ -300,14 +300,14 @@ Evaluate objectively and deterministically without randomness so that the same i
    - "High Risk of Rejection": shortlistProbability < 30
 
 7. missingKeywords:
-   - Identify up to 10-12 most critical missing keywords or tools from the JD.
+   - Identify up to 6-8 most critical missing keywords or tools from the JD. Keep whyNeeded concise (1 sentence).
    - priority MUST be exactly "critical", "important", or "bonus".
 
 8. flawsAndFixes:
-   - Identify up to 4 specific flaws with concrete before/after bullet rewrites.
+   - Identify up to 3-4 specific flaws with concrete before/after bullet rewrites. Keep suggestion concise (1 sentence).
 
 9. keyRecommendations:
-   - Provide top 3-5 immediate steps candidate should take.
+   - Provide top 3-4 immediate steps candidate should take (1 sentence each).
 
 10. Return an empty string ("") for suggestedLatexCode.
       `,
@@ -343,25 +343,10 @@ Evaluate objectively and deterministically without randomness so that the same i
       object.verdict = "High Risk of Rejection";
     }
 
-    // Pre-generate tailored LaTeX resume from candidate's actual resume
-    let customizedLatex = "";
-    try {
-      const topKeywords = object.missingKeywords.slice(0, 10).map((k) => k.keyword);
-      const latexRes = await generateCustomLatexResume({
-        jobDescription: jdText,
-        missingKeywords: topKeywords,
-        instructions: `Candidate Actual Resume:\n${resumeText.slice(0, 10000)}\n\nTarget Role: "${targetRole}". Generate an ATS-optimized 1-page LaTeX resume preserving the candidate's actual name, contact info, experience, and education, while weaving in these keywords where appropriate: ${topKeywords.join(", ")}.`,
-      });
-      if (latexRes.success && latexRes.latex) {
-        customizedLatex = latexRes.latex;
-      }
-    } catch (latexErr) {
-      console.warn("Could not pre-generate LaTeX resume, user can still use LaTeX studio:", latexErr);
-    }
-
+    // LaTeX is generated on-demand when the user opens LaTeX Studio (faster analysis)
     const finalAnalysis: DetailedResumeAnalysis = {
       ...object,
-      suggestedLatexCode: customizedLatex,
+      suggestedLatexCode: "",
     };
 
     return {
@@ -431,6 +416,7 @@ CRITICAL FORMATTING REQUIREMENTS:
     const { text } = await generateText({
       model: groq(GROQ_MODEL),
       temperature: 0,
+      maxOutputTokens: 10000,
       prompt,
     });
 

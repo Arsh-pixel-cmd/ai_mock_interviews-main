@@ -84,6 +84,7 @@ export default function ResumeAnalyzerPro({
   const [expandedFlawIdx, setExpandedFlawIdx] = useState<number | null>(null);
   const [keywordFilter, setKeywordFilter] = useState<"all" | "critical" | "important" | "bonus">("all");
   const [copiedKeyword, setCopiedKeyword] = useState<string | null>(null);
+  const [latexConverting, setLatexConverting] = useState(false);
 
   const [isPending, startTransition] = useTransition();
 
@@ -147,20 +148,26 @@ export default function ResumeAnalyzerPro({
       (file || (resumeText && resumeText.trim().length >= 30)) &&
       latexCode === DEFAULT_LATEX_TEMPLATE
     ) {
+      setLatexConverting(true);
       startTransition(async () => {
-        toast.info("Converting uploaded resume into ATS LaTeX format...");
         const formData = new FormData();
         if (file) formData.append("resume", file);
         if (resumeText) formData.append("resumeText", resumeText);
         formData.append("targetRole", targetRole);
         formData.append("jobDescription", jobDescription);
 
-        const res = await convertResumeToLatexAction(formData);
-        if (res.success && res.latex) {
-          setLatexCode(res.latex);
-          toast.success("Resume successfully converted to LaTeX!");
-        } else {
-          toast.error(res.error || "Could not convert resume automatically.");
+        try {
+          const res = await convertResumeToLatexAction(formData);
+          if (res.success && res.latex) {
+            setLatexCode(res.latex);
+            toast.success("Resume successfully converted to LaTeX!");
+          } else {
+            toast.error(res.error || "Could not convert resume automatically. Paste LaTeX code manually in the editor.");
+          }
+        } catch {
+          toast.error("Conversion failed. You can paste your LaTeX code manually in the editor.");
+        } finally {
+          setLatexConverting(false);
         }
       });
     }
@@ -678,7 +685,33 @@ export default function ResumeAnalyzerPro({
 
       {/* TAB 2: LATEX STUDIO & PDF EXPORT */}
       {activeTab === "latex" && (
-        <div className="flex flex-col gap-4 animate-fadeIn">
+        <div className="flex flex-col gap-4 animate-fadeIn relative">
+          {/* Loading overlay while converting resume to LaTeX */}
+          {latexConverting && (
+            <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-dark-100/90 backdrop-blur-sm rounded-2xl">
+              <div className="flex flex-col items-center gap-5">
+                {/* Animated document icon */}
+                <div className="relative">
+                  <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary-200/30 to-primary-200/5 border border-primary-200/30 flex items-center justify-center animate-pulse">
+                    <FileCode size={36} className="text-primary-200" />
+                  </div>
+                  <div className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-dark-200 border-2 border-primary-200/50 flex items-center justify-center">
+                    <Loader2 size={16} className="text-primary-200 animate-spin" />
+                  </div>
+                </div>
+                <div className="text-center">
+                  <p className="text-white font-bold text-lg">Converting Resume to LaTeX</p>
+                  <p className="text-light-400 text-sm mt-1 max-w-xs">
+                    AI is analyzing your resume and generating ATS-optimized LaTeX code...
+                  </p>
+                </div>
+                {/* Progress bar animation */}
+                <div className="w-64 h-1.5 bg-dark-300 rounded-full overflow-hidden">
+                  <div className="h-full bg-gradient-to-r from-primary-200 to-light-100 rounded-full animate-progress" />
+                </div>
+              </div>
+            </div>
+          )}
           <LatexEditor
             initialLatex={latexCode}
             missingKeywords={analysis?.missingKeywords || []}
