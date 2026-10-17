@@ -144,11 +144,13 @@ function tokenizeInlineLatex(text: string): InlineToken[] {
         .replace(/---/g, "—")
         .replace(/--/g, "–")
         .replace(/\\textbullet|\$\\bullet\$/g, "•")
+        .replace(/\\([,;:!])/g, " ")
         .replace(/\\(?:\s+|$)/g, " ")
-        .replace(/\\(?:small|footnotesize|large|Large|LARGE|Huge|huge|scshape|itshape|bfseries|noindent|centering)\b/g, "")
-        .replace(/[{}]/g, "");
+        .replace(/\\(?:small|footnotesize|large|Large|LARGE|Huge|huge|scshape|itshape|bfseries|noindent|centering|raggedright|raggedbottom)\b/g, "")
+        .replace(/[{}]/g, "")
+        .replace(/\\\s*/g, " ");
 
-      if (cleaned.trim()) {
+      if (cleaned.length > 0) {
         tokens.push({ type: "text", value: cleaned });
       }
       currentText = "";
@@ -266,12 +268,14 @@ function tokenizeInlineLatex(text: string): InlineToken[] {
       }
     }
 
-    // 6b. \textsuperscript{...} and \textsubscript{...}
+    // 6b. \textsuperscript{...} and \textsubscript{...} (with or without braces)
     if (clean.startsWith("\\textsuperscript", i) || clean.startsWith("\\textsubscript", i)) {
       const isSup = clean.startsWith("\\textsuperscript", i);
-      const braceIdx = clean.indexOf("{", i);
-      if (braceIdx !== -1 && braceIdx <= i + 18) {
-        const part = getBalancedBraceContent(clean, braceIdx);
+      const cmdLen = isSup ? 16 : 14;
+      const afterCmd = clean.slice(i + cmdLen);
+      const braceIdx = afterCmd.indexOf("{");
+      if (braceIdx !== -1 && braceIdx <= 2) {
+        const part = getBalancedBraceContent(clean, i + cmdLen + braceIdx);
         if (part) {
           flushText();
           tokens.push({
@@ -283,7 +287,36 @@ function tokenizeInlineLatex(text: string): InlineToken[] {
           i = part.endIndex + 1;
           continue;
         }
+      } else {
+        const wordMatch = afterCmd.match(/^\s*([a-zA-Z0-9]+)/);
+        if (wordMatch) {
+          flushText();
+          tokens.push({
+            type: "text",
+            value: wordMatch[1],
+            superscript: isSup,
+            subscript: !isSup,
+          } as any);
+          i += cmdLen + wordMatch[0].length;
+          continue;
+        }
       }
+    }
+
+    // 6c. Math mode superscripts/subscripts: $^{th}$ or $_{...}$ or ^{th}
+    const mathSupSub = clean.slice(i).match(/^(\$?[\^_]\{([^}]+)\}\$?|\$?[\^_]([a-zA-Z0-9]+)\$?)/);
+    if (mathSupSub) {
+      flushText();
+      const isSup = mathSupSub[0].includes("^");
+      const val = (mathSupSub[2] || mathSupSub[3] || "").replace(/\\text\{([^}]+)\}/, "$1");
+      tokens.push({
+        type: "text",
+        value: val,
+        superscript: isSup,
+        subscript: !isSup,
+      } as any);
+      i += mathSupSub[0].length;
+      continue;
     }
 
     // 7. Pipe separators ($|$, $\mid$, \textbar, |)
@@ -513,21 +546,80 @@ function parseSectionContent(rawContent: string): ParsedEntry[] {
 
       if (depth <= 1) {
         // Top-level entry (Job, Degree, or Skill group)
-        let left = itemText;
-        let right = "";
-        if (itemText.includes("\\hfill")) {
-          const parts = itemText.split("\\hfill");
-          left = parts[0].trim();
-          right = parts.slice(1).join(" ").trim();
-        }
+        const rawLines = itemText
+          .split(/\\\\(?:\s*\[[^\]]*\])?/)
+          .map((l) => l.trim())
+          .filter((l) => l.length > 0);
 
-        currentEntry = {
-          type: "entry",
-          left,
-          right,
-          bullets: [],
-        };
-        entries.push(currentEntry);
+        if (rawLines.length > 1) {
+          if (rawLines[0].includes("\\hfill")) {
+            const line1Parts = rawLines[0].split("\\hfill");
+            const left = line1Parts[0].trim();
+            const right = line1Parts.slice(1).join(" ").trim();
+
+            let subtitle: string | undefined = undefined;
+            let subRight: string | undefined = undefined;
+            if (rawLines[1].includes("\\hfill")) {
+              const line2Parts = rawLines[1].split("\\hfill");
+              subtitle = line2Parts[0].trim();
+              subRight = line2Parts.slice(1).join(" ").trim();
+            } else {
+              subtitle = rawLines[1].trim();
+            }
+
+            const extraBullets = rawLines.slice(2);
+
+            currentEntry = {
+              type: "entry",
+              left,
+              right,
+              subtitle: subtitle || undefined,
+              subRight: subRight || undefined,
+              bullets: extraBullets,
+            };
+            entries.push(currentEntry);
+          } else {
+            // Like in Skills: each line is an independent skill row
+            for (const line of rawLines) {
+              const cleanLine = line
+                .replace(/^\\small\{|^\\item\{|^\\item\s*/g, "")
+                .replace(/\}$/g, "")
+                .trim();
+              if (!cleanLine || cleanLine === "}" || cleanLine === "}}") continue;
+              let left = cleanLine;
+              let right = "";
+              if (cleanLine.includes("\\hfill")) {
+                const parts = cleanLine.split("\\hfill");
+                left = parts[0].trim();
+                right = parts.slice(1).join(" ").trim();
+              }
+              currentEntry = {
+                type: "line",
+                left,
+                right,
+                bullets: [],
+              };
+              entries.push(currentEntry);
+            }
+          }
+        } else {
+          // Single line entry
+          let left = itemText;
+          let right = "";
+          if (itemText.includes("\\hfill")) {
+            const parts = itemText.split("\\hfill");
+            left = parts[0].trim();
+            right = parts.slice(1).join(" ").trim();
+          }
+
+          currentEntry = {
+            type: "entry",
+            left,
+            right,
+            bullets: [],
+          };
+          entries.push(currentEntry);
+        }
       } else {
         // Sub-bullet under current entry
         if (!currentEntry) {
@@ -535,7 +627,11 @@ function parseSectionContent(rawContent: string): ParsedEntry[] {
           entries.push(currentEntry);
         }
         if (itemText) {
-          currentEntry.bullets.push(itemText);
+          const subLines = itemText
+            .split(/\\\\(?:\s*\[[^\]]*\])?/)
+            .map((s) => s.trim())
+            .filter((s) => s.length > 0);
+          currentEntry.bullets.push(...subLines);
         }
       }
     } else if (tok.type === "text" && tok.value) {
@@ -716,7 +812,7 @@ function parseLatexResume(latex: string) {
  * with Overleaf / Jake's Resume styling. 100% ATS-parseable and PDF-ready.
  */
 export const LatexPreview = forwardRef<HTMLDivElement, LatexPreviewProps>(
-  ({ latex, zoom = 1, editable = false }, ref) => {
+  ({ latex, zoom = 1, editable = true }, ref) => {
     const parsedData = useMemo(() => {
       return parseLatexResume(latex);
     }, [latex]);
@@ -730,17 +826,18 @@ export const LatexPreview = forwardRef<HTMLDivElement, LatexPreviewProps>(
     }
 
     return (
-      <div className="flex justify-center overflow-x-auto p-4 max-sm:p-1">
+      <div className="flex justify-center w-full">
         {/* Printable & Screen A4 Container */}
         <div
           ref={ref}
           style={{
-            transform: `scale(${zoom})`,
-            transformOrigin: "top center",
+            zoom: zoom,
           }}
           contentEditable={editable}
           suppressContentEditableWarning={editable}
-          className={`print-resume-sheet relative w-[210mm] min-h-[297mm] bg-white text-gray-950 font-serif px-[18mm] py-[16mm] shadow-2xl rounded-sm transition-transform duration-150 select-text print:shadow-none print:m-0 print:p-[12mm] print:w-full print:min-h-0 print:transform-none leading-normal ${editable ? 'outline-none focus:ring-2 focus:ring-blue-300/50 cursor-text' : ''}`}
+          className={`print-resume-sheet relative w-[210mm] min-h-[297mm] h-fit bg-white text-gray-950 font-serif px-[18mm] py-[16mm] shadow-2xl rounded-sm transition-all duration-150 select-text print:shadow-none print:m-0 print:p-[12mm] print:w-full print:min-h-0 print:transform-none leading-normal ${
+            editable ? "outline-none focus:ring-2 focus:ring-primary-200/50 cursor-text" : ""
+          }`}
         >
           {/* Header */}
           <header className="mb-4 text-center">

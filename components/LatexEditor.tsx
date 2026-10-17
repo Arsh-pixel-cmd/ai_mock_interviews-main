@@ -20,6 +20,7 @@ import {
   List,
   Check,
   Loader2,
+  Edit3,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -46,6 +47,7 @@ export default function LatexEditor({
   const [latexCode, setLatexCode] = useState<string>(initialLatex || DEFAULT_LATEX_TEMPLATE);
   const [viewMode, setViewMode] = useState<"split" | "code" | "preview">("split");
   const [zoom, setZoom] = useState<number>(0.95);
+  const [isDirectEdit, setIsDirectEdit] = useState(true);
   const [copied, setCopied] = useState(false);
   const [aiPrompt, setAiPrompt] = useState("");
   const [showAiModal, setShowAiModal] = useState(false);
@@ -291,17 +293,17 @@ export default function LatexEditor({
         </div>
       )}
 
-      {/* Main Dual-Pane Studio Body */}
-      <div className="flex flex-col lg:flex-row gap-4">
+      {/* Main Dual-Pane Studio Body — Overleaf-grade layout with independent scrolling */}
+      <div className="flex flex-col lg:flex-row gap-4 h-[calc(100vh-140px)] min-h-[680px] w-full">
         {/* LEFT: LaTeX Code Editor */}
         {(viewMode === "split" || viewMode === "code") && (
           <div
-            className={`flex flex-col bg-dark-100 rounded-2xl border border-white/10 overflow-hidden shadow-xl ${
-              viewMode === "code" ? "w-full" : "w-full lg:w-1/2 lg:flex-shrink-0"
+            className={`flex flex-col bg-dark-100 rounded-2xl border border-white/10 overflow-hidden shadow-2xl h-full ${
+              viewMode === "code" ? "w-full" : "w-full lg:w-1/2 flex-1 min-w-0"
             }`}
           >
             {/* Editor Toolbar */}
-            <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 bg-dark-200 border-b border-white/5">
+            <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 bg-dark-200 border-b border-white/5 shrink-0">
               <div className="flex items-center gap-1">
                 <span className="text-xs font-mono font-semibold text-light-400">resume.tex</span>
                 <span className="text-[10px] text-light-600 px-1.5 py-0.5 rounded bg-dark-300">
@@ -353,8 +355,8 @@ export default function LatexEditor({
               </div>
             </div>
 
-            {/* Code Input Area with Line Numbers */}
-            <div className="relative flex flex-1 h-[600px] overflow-hidden font-mono text-xs">
+            {/* Code Input Area with Line Numbers — Independently Scrollable */}
+            <div className="relative flex flex-1 min-h-0 overflow-hidden font-mono text-xs">
               {/* Line Numbers column */}
               <div
                 aria-hidden="true"
@@ -378,15 +380,15 @@ export default function LatexEditor({
           </div>
         )}
 
-        {/* RIGHT: Live A4 Resume Render Preview */}
+        {/* RIGHT: Live A4 Resume Render Preview — Independently Scrollable & Visually Editable */}
         {(viewMode === "split" || viewMode === "preview") && (
           <div
-            className={`flex flex-col ${
-              viewMode === "preview" ? "w-full" : "w-full lg:w-1/2 lg:sticky lg:top-4 lg:self-start"
+            className={`flex flex-col bg-dark-100 rounded-2xl border border-white/10 overflow-hidden shadow-2xl h-full ${
+              viewMode === "preview" ? "w-full" : "w-full lg:w-1/2 flex-1 min-w-0"
             }`}
           >
-            {/* Preview Toolbar — slim and minimal */}
-            <div className="flex items-center justify-between px-3 py-2 bg-dark-200/80 rounded-t-xl border border-white/5">
+            {/* Preview Toolbar */}
+            <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-dark-200 border-b border-white/5 shrink-0">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-semibold text-white flex items-center gap-1.5">
                   <Eye size={14} className="text-success-100" /> Live Document Preview
@@ -396,38 +398,75 @@ export default function LatexEditor({
                 </span>
               </div>
 
-              {/* Zoom Controls */}
-              <div className="flex items-center gap-1.5 bg-dark-300 px-2 py-1 rounded-lg border border-white/5">
+              {/* Direct Edit Toggle & Zoom Controls */}
+              <div className="flex items-center gap-2">
                 <button
-                  onClick={() => setZoom((z) => Math.max(0.5, Number((z - 0.05).toFixed(2))))}
-                  className="text-light-100 hover:text-white p-0.5"
-                  title="Zoom Out"
+                  onClick={() => setIsDirectEdit(!isDirectEdit)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+                    isDirectEdit
+                      ? "bg-primary-200/20 text-primary-200 border border-primary-200/40 font-semibold"
+                      : "text-light-400 hover:text-white bg-dark-300 border border-white/5"
+                  }`}
+                  title={isDirectEdit ? "Direct visual editing enabled: click text on preview to edit" : "Click to enable direct visual editing"}
                 >
-                  <ZoomOut size={13} />
+                  <Edit3 size={12} />
+                  <span>{isDirectEdit ? "Direct Edit: ON" : "Direct Edit: OFF"}</span>
                 </button>
-                <span className="text-[11px] font-mono text-light-100 w-10 text-center">
-                  {Math.round(zoom * 100)}%
-                </span>
-                <button
-                  onClick={() => setZoom((z) => Math.min(1.4, Number((z + 0.05).toFixed(2))))}
-                  className="text-light-100 hover:text-white p-0.5"
-                  title="Zoom In"
-                >
-                  <ZoomIn size={13} />
-                </button>
-                <button
-                  onClick={() => setZoom(0.95)}
-                  className="text-[10px] text-light-400 hover:text-white ml-1 px-1 rounded bg-dark-200"
-                  title="Reset Zoom"
-                >
-                  Fit
-                </button>
+
+                <div className="flex items-center gap-1.5 bg-dark-300 px-2 py-1 rounded-lg border border-white/5">
+                  <button
+                    onClick={() => setZoom((z) => Math.max(0.5, Number((z - 0.05).toFixed(2))))}
+                    className="text-light-100 hover:text-white p-0.5 cursor-pointer"
+                    title="Zoom Out"
+                  >
+                    <ZoomOut size={13} />
+                  </button>
+                  <span className="text-[11px] font-mono text-light-100 w-10 text-center">
+                    {Math.round(zoom * 100)}%
+                  </span>
+                  <button
+                    onClick={() => setZoom((z) => Math.min(1.4, Number((z + 0.05).toFixed(2))))}
+                    className="text-light-100 hover:text-white p-0.5 cursor-pointer"
+                    title="Zoom In"
+                  >
+                    <ZoomIn size={13} />
+                  </button>
+                  <button
+                    onClick={() => setZoom(0.95)}
+                    className="text-[10px] text-light-400 hover:text-white ml-1 px-1 rounded bg-dark-200 cursor-pointer"
+                    title="Reset Zoom"
+                  >
+                    Fit
+                  </button>
+                </div>
               </div>
             </div>
 
-            {/* Full-height A4 Paper Canvas — no sandbox */}
-            <div className="overflow-y-auto overflow-x-auto bg-neutral-800/50 flex justify-center py-4 px-2 rounded-b-xl" style={{ maxHeight: 'calc(100vh - 180px)' }}>
-              <LatexPreview ref={printRef} latex={latexCode} zoom={zoom} editable={viewMode === 'preview'} />
+            {/* Direct Edit Active Notification Banner */}
+            {isDirectEdit && (
+              <div className="bg-primary-200/10 border-b border-primary-200/20 px-3 py-1 flex items-center justify-between text-[11px] text-primary-200 shrink-0">
+                <span>✏️ Visual Edit Active: Click any text directly on the paper to modify before exporting.</span>
+                <button
+                  onClick={() => {
+                    handleCodeChange(latexCode + " ");
+                    setTimeout(() => handleCodeChange(latexCode), 10);
+                    toast.success("Preview re-rendered from LaTeX code!");
+                  }}
+                  className="text-light-400 hover:text-white underline text-[10px] cursor-pointer"
+                >
+                  Reset to Code
+                </button>
+              </div>
+            )}
+
+            {/* Full-height A4 Paper Canvas — Overleaf PDF workspace style */}
+            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-auto bg-[#13151b] flex justify-center py-6 px-4">
+              <LatexPreview
+                ref={printRef}
+                latex={latexCode}
+                zoom={zoom}
+                editable={isDirectEdit}
+              />
             </div>
           </div>
         )}

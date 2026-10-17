@@ -85,6 +85,7 @@ export default function ResumeAnalyzerPro({
   const [keywordFilter, setKeywordFilter] = useState<"all" | "critical" | "important" | "bonus">("all");
   const [copiedKeyword, setCopiedKeyword] = useState<string | null>(null);
   const [latexConverting, setLatexConverting] = useState(false);
+  const [latexConversionFailed, setLatexConversionFailed] = useState(false);
 
   const [isPending, startTransition] = useTransition();
 
@@ -136,6 +137,7 @@ export default function ResumeAnalyzerPro({
   // Open LaTeX Studio & guarantee automatic conversion from uploaded resume if not already done
   const handleOpenLatexStudio = () => {
     setActiveTab("latex");
+    setLatexConversionFailed(false);
 
     // If analysis already pre-generated customized LaTeX, ensure it's loaded
     if (analysis?.suggestedLatexCode) {
@@ -162,10 +164,12 @@ export default function ResumeAnalyzerPro({
             setLatexCode(res.latex);
             toast.success("Resume successfully converted to LaTeX!");
           } else {
-            toast.error(res.error || "Could not convert resume automatically. Paste LaTeX code manually in the editor.");
+            setLatexConversionFailed(true);
+            toast.error(res.error || "Could not convert resume automatically. Please paste your LaTeX code into the editor on the left.");
           }
         } catch {
-          toast.error("Conversion failed. You can paste your LaTeX code manually in the editor.");
+          setLatexConversionFailed(true);
+          toast.error("Conversion timed out. Please paste your LaTeX code into the editor on the left.");
         } finally {
           setLatexConverting(false);
         }
@@ -686,6 +690,24 @@ export default function ResumeAnalyzerPro({
       {/* TAB 2: LATEX STUDIO & PDF EXPORT */}
       {activeTab === "latex" && (
         <div className="flex flex-col gap-4 animate-fadeIn relative">
+          {/* Conversion failed fallback callout */}
+          {latexConversionFailed && (
+            <div className="flex items-center justify-between p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs animate-fadeIn">
+              <div className="flex items-center gap-2.5">
+                <AlertTriangle size={18} className="text-amber-400 shrink-0" />
+                <span>
+                  Automatic conversion was unable to parse your resume document. <strong>Please paste your LaTeX code into the editor on the left</strong> or customize the ATS template to preview and export to PDF.
+                </span>
+              </div>
+              <button
+                onClick={() => setLatexConversionFailed(false)}
+                className="text-amber-400 hover:text-white ml-2 text-xs font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
           {/* Loading overlay while converting resume to LaTeX */}
           {latexConverting && (
             <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-dark-100/90 backdrop-blur-sm rounded-2xl">
