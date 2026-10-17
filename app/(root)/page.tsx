@@ -1,48 +1,55 @@
 import Link from "next/link";
 import Image from "next/image";
 import { redirect } from "next/navigation";
+import { Sparkles, ArrowRight, CheckCircle2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import InterviewCard from "@/components/InterviewCard";
+import CreateInterviewModal from "@/components/CreateInterviewModal";
 
 import { getCurrentUser } from "@/lib/actions/auth.action";
-import {
-  getInterviewsByUserId,
-  getLatestInterviews,
-} from "@/lib/actions/general.action";
+import { getInterviewsByUserId } from "@/lib/actions/general.action";
 
 async function Home() {
   const user = await getCurrentUser();
   if (!user) redirect("/sign-in");
 
-  const [userInterviews, allInterview] = await Promise.all([
-    getInterviewsByUserId(user.id),
-    getLatestInterviews({ userId: user.id }),
-  ]);
-
+  const userInterviews = await getInterviewsByUserId(user.id);
   const hasPastInterviews = Boolean(userInterviews && userInterviews.length > 0);
-  const hasUpcomingInterviews = Boolean(allInterview && allInterview.length > 0);
 
   return (
     <>
+      {/* Hero CTA */}
       <section className="card-cta">
         <div className="flex flex-col gap-6 max-w-lg">
-          <h2>Get Interview-Ready with AI-Powered Practice & Feedback</h2>
-          <p className="text-lg">
-            Practice real interview questions & get instant feedback
+          <h2 className="text-3xl sm:text-4xl font-extrabold text-white leading-tight">
+            Get Interview-Ready with Real-Time Practice & Feedback
+          </h2>
+          <p className="text-base sm:text-lg text-light-100">
+            Practice realistic interview questions with interactive audio dialogue and get instant rubric feedback.
           </p>
 
-          <Button asChild className="btn-primary max-sm:w-full">
-            <Link href="/interview">Start an Interview</Link>
-          </Button>
+          <div className="flex flex-wrap items-center gap-4">
+            <CreateInterviewModal
+              userId={user.id}
+              triggerText="Start an Interview"
+              variant="primary"
+            />
+            <Button asChild variant="outline" className="border-white/20 text-white hover:bg-white/10">
+              <Link href="/resume-analyzer">
+                Analyze Resume <ArrowRight size={14} className="ml-1.5" />
+              </Link>
+            </Button>
+          </div>
         </div>
 
         <Image
           src="/robot.png"
           alt="robo-dude"
-          width={400}
-          height={400}
-          className="max-sm:hidden"
+          width={380}
+          height={380}
+          className="max-sm:hidden drop-shadow-2xl"
+          priority
         />
       </section>
 
@@ -55,7 +62,7 @@ async function Home() {
           <div className="flex flex-col gap-5 max-w-2xl z-10">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary-200/10 border border-primary-200/30 text-xs font-bold text-primary-200 uppercase tracking-wider w-fit">
               <span className="w-2 h-2 rounded-full bg-primary-200 animate-pulse" />
-              New Feature • AI Resume Intelligence & LaTeX Studio
+              New Feature • Resume Intelligence & LaTeX Studio
             </div>
 
             <h2 className="text-3xl sm:text-4xl font-extrabold text-white leading-tight">
@@ -69,10 +76,10 @@ async function Home() {
             {/* Feature Pills */}
             <div className="flex flex-wrap items-center gap-3 pt-1 text-xs text-light-400">
               <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-dark-200 border border-white/5 text-white">
-                <span className="text-success-100 font-bold">✓</span> ATS Compatibility Score
+                <CheckCircle2 size={13} className="text-success-100" /> ATS Compatibility Score
               </span>
               <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-dark-200 border border-white/5 text-white">
-                <span className="text-success-100 font-bold">✓</span> Missing Keyword Gap Analysis
+                <CheckCircle2 size={13} className="text-success-100" /> Missing Keyword Gap Analysis
               </span>
               <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-dark-200 border border-white/5 text-white">
                 <span className="text-primary-200 font-bold">LaTeX</span> Leaflet Live Editor
@@ -131,12 +138,28 @@ async function Home() {
         </div>
       </section>
 
-      <section className="flex flex-col gap-6 mt-8">
-        <h2>Your Interviews</h2>
+      {/* Dynamic Your Interviews Section */}
+      <section className="flex flex-col gap-6 mt-10">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h2 className="text-2xl sm:text-3xl font-bold text-white">
+              Your Interviews
+            </h2>
+            <p className="text-xs sm:text-sm text-light-400 mt-1">
+              Track your mock interview history, scores, and detailed category feedback.
+            </p>
+          </div>
 
-        <div className="interviews-section">
-          {hasPastInterviews ? (
-            userInterviews?.map((interview) => (
+          <CreateInterviewModal
+            userId={user.id}
+            triggerText="+ New Interview"
+            variant="primary"
+          />
+        </div>
+
+        {hasPastInterviews ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full items-stretch">
+            {userInterviews?.map((interview) => (
               <InterviewCard
                 key={interview.id}
                 userId={user.id}
@@ -146,33 +169,32 @@ async function Home() {
                 techstack={interview.techstack}
                 createdAt={interview.createdAt}
               />
-            ))
-          ) : (
-            <p>You haven&apos;t taken any interviews yet</p>
-          )}
-        </div>
-      </section>
+            ))}
+          </div>
+        ) : (
+          <div className="card-border w-full">
+            <div className="card dark-gradient p-10 flex flex-col items-center justify-center text-center gap-5">
+              <div className="size-16 rounded-2xl bg-primary-200/10 border border-primary-200/20 flex items-center justify-center text-primary-200">
+                <Sparkles size={28} />
+              </div>
 
-      <section className="flex flex-col gap-6 mt-8">
-        <h2>Take Interviews</h2>
+              <div className="max-w-md flex flex-col gap-2">
+                <h3 className="text-xl font-bold text-white">
+                  No mock interviews yet
+                </h3>
+                <p className="text-sm text-light-400 leading-relaxed">
+                  Generate your first mock interview tailored to your target role, experience level, and preferred tech stack.
+                </p>
+              </div>
 
-        <div className="interviews-section">
-          {hasUpcomingInterviews ? (
-            allInterview?.map((interview) => (
-              <InterviewCard
-                key={interview.id}
+              <CreateInterviewModal
                 userId={user.id}
-                interviewId={interview.id}
-                role={interview.role}
-                type={interview.type}
-                techstack={interview.techstack}
-                createdAt={interview.createdAt}
+                triggerText="Create Your First Interview"
+                variant="primary"
               />
-            ))
-          ) : (
-            <p>There are no interviews available</p>
-          )}
-        </div>
+            </div>
+          </div>
+        )}
       </section>
     </>
   );

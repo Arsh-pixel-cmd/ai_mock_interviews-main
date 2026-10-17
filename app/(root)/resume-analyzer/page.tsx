@@ -4,7 +4,7 @@ import ResumeAnalyzerPro from "@/components/ResumeAnalyzerPro";
 import { Sparkles, FileCode, CheckCircle, FileText } from "lucide-react";
 
 export const metadata = {
-  title: "AI Resume & ATS Analyzer with LaTeX Studio | PrepWise",
+  title: "Resume & ATS Analyzer with LaTeX Studio | PrepWise",
   description:
     "Analyze your resume against job descriptions, detect ATS formatting flaws & missing keywords, and edit your resume in LaTeX with instant PDF export.",
 };
@@ -31,7 +31,7 @@ export default async function ResumeAnalyzerPage({
       {/* Page Header */}
       <div className="flex flex-col gap-3">
         <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-primary-200/10 text-primary-200 border border-primary-200/20 text-xs font-semibold w-fit">
-          <Sparkles size={14} /> AI Resume Intelligence & Leaflet LaTeX Editor
+          <Sparkles size={14} /> Resume Intelligence & Leaflet LaTeX Editor
         </div>
         <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
           Resume ATS Analyzer & <span className="text-primary-200">LaTeX Studio</span>

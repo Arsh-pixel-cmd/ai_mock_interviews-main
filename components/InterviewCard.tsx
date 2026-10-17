@@ -1,9 +1,11 @@
 import dayjs from "dayjs";
 import Link from "next/link";
 import Image from "next/image";
+import { Play, RotateCcw, FileText } from "lucide-react";
 
 import { Button } from "./ui/button";
 import DisplayTechIcons from "./DisplayTechIcons";
+import DeleteInterviewButton from "./DeleteInterviewButton";
 
 import { cn, getRandomInterviewCover } from "@/lib/utils";
 import { getFeedbackByInterviewId } from "@/lib/actions/general.action";
@@ -28,80 +30,123 @@ const InterviewCard = async ({
 
   const badgeColor =
     {
-      Behavioral: "bg-light-400",
-      Mixed: "bg-light-600",
-      Technical: "bg-light-800",
-    }[normalizedType] || "bg-light-600";
+      Behavioral: "bg-blue-600/30 text-blue-300 border-blue-500/30",
+      Mixed: "bg-purple-600/30 text-purple-300 border-purple-500/30",
+      Technical: "bg-emerald-600/30 text-emerald-300 border-emerald-500/30",
+    }[normalizedType] || "bg-light-600/30 text-light-100 border-white/10";
 
   const formattedDate = dayjs(
     feedback?.createdAt || createdAt || Date.now()
   ).format("MMM D, YYYY");
 
+  const hasFeedback = Boolean(feedback);
+
   return (
-    <div className="card-border w-[360px] max-sm:w-full min-h-96">
-      <div className="card-interview">
+    <div className="card-border w-full min-h-[380px] flex flex-col group">
+      <div className="card-interview flex-1 flex flex-col justify-between">
         <div>
-          {/* Type Badge */}
-          <div
-            className={cn(
-              "absolute top-0 right-0 w-fit px-4 py-2 rounded-bl-lg",
-              badgeColor
+          {/* Header Row: Type Badge + Delete action */}
+          <div className="flex items-center justify-between gap-2 mb-4">
+            <span
+              className={cn(
+                "px-3 py-1 rounded-full text-xs font-semibold border backdrop-blur-sm",
+                badgeColor
+              )}
+            >
+              {normalizedType}
+            </span>
+
+            {userId && interviewId && (
+              <DeleteInterviewButton
+                interviewId={interviewId}
+                userId={userId}
+                role={role}
+              />
             )}
-          >
-            <p className="badge-text ">{normalizedType}</p>
           </div>
 
-          {/* Cover Image */}
-          <Image
-            src={getRandomInterviewCover()}
-            alt="cover-image"
-            width={90}
-            height={90}
-            className="rounded-full object-fit size-[90px]"
-          />
-
-          {/* Interview Role */}
-          <h3 className="mt-5 capitalize">{role} Interview</h3>
+          {/* Cover Image & Role */}
+          <div className="flex items-center gap-4">
+            <Image
+              src={getRandomInterviewCover()}
+              alt="cover-image"
+              width={64}
+              height={64}
+              className="rounded-2xl object-cover size-16 border border-white/10 shrink-0"
+            />
+            <div className="flex flex-col min-w-0">
+              <h3 className="capitalize text-lg font-bold text-white truncate">
+                {role}
+              </h3>
+              <p className="text-xs text-light-400 capitalize">
+                Mock Interview Session
+              </p>
+            </div>
+          </div>
 
           {/* Date & Score */}
-          <div className="flex flex-row gap-5 mt-3">
-            <div className="flex flex-row gap-2">
+          <div className="flex flex-row gap-5 mt-4 text-xs text-light-400">
+            <div className="flex flex-row gap-2 items-center">
               <Image
                 src="/calendar.svg"
-                width={22}
-                height={22}
+                width={16}
+                height={16}
                 alt="calendar"
+                className="opacity-70"
               />
               <p>{formattedDate}</p>
             </div>
 
             <div className="flex flex-row gap-2 items-center">
-              <Image src="/star.svg" width={22} height={22} alt="star" />
-              <p>{feedback?.totalScore || "---"}/100</p>
+              <Image
+                src="/star.svg"
+                width={16}
+                height={16}
+                alt="star"
+                className="opacity-70"
+              />
+              <p className={hasFeedback ? "text-primary-200 font-bold" : ""}>
+                {hasFeedback ? `${feedback?.totalScore}/100` : "Not evaluated yet"}
+              </p>
             </div>
           </div>
 
-          {/* Feedback or Placeholder Text */}
-          <p className="line-clamp-2 mt-5">
+          {/* Feedback assessment or invitation text */}
+          <p className="text-xs sm:text-sm text-light-100 line-clamp-3 mt-4 leading-relaxed">
             {feedback?.finalAssessment ||
-              "You haven't taken this interview yet. Take it now to improve your skills."}
+              "Ready to practice! Start your mock interview to receive detailed performance metrics and rubric scoring."}
           </p>
         </div>
 
-        <div className="flex flex-row justify-between">
+        {/* Footer: Tech Stack and Action Buttons */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-6 border-t border-white/10 mt-6">
           <DisplayTechIcons techStack={techstack} />
 
-          <Button className="btn-primary">
-            <Link
-              href={
-                feedback
-                  ? `/interview/${interviewId}/feedback`
-                  : `/interview/${interviewId}`
-              }
-            >
-              {feedback ? "Check Feedback" : "View Interview"}
-            </Link>
-          </Button>
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            {hasFeedback ? (
+              <>
+                <Button asChild size="sm" className="btn-secondary text-xs px-3">
+                  <Link href={`/interview/${interviewId}`}>
+                    <RotateCcw size={13} className="mr-1" />
+                    Retake
+                  </Link>
+                </Button>
+                <Button asChild size="sm" className="btn-primary text-xs px-3 flex-1 sm:flex-initial">
+                  <Link href={`/interview/${interviewId}/feedback`}>
+                    <FileText size={13} className="mr-1" />
+                    Feedback
+                  </Link>
+                </Button>
+              </>
+            ) : (
+              <Button asChild size="sm" className="btn-primary text-xs px-4 w-full sm:w-auto">
+                <Link href={`/interview/${interviewId}`}>
+                  <Play size={13} className="mr-1.5 fill-current" />
+                  Start Interview
+                </Link>
+              </Button>
+            )}
+          </div>
         </div>
       </div>
     </div>

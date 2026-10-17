@@ -147,7 +147,7 @@ export default function LatexEditor({
     toast.info(`Inserted "${kw}" at cursor position`);
   };
 
-  // AI-powered LaTeX refinement
+  // Smart LaTeX refinement
   const handleAiRefine = () => {
     if (!aiPrompt && missingKeywords.length === 0) {
       toast.error("Please enter instructions or select keywords to integrate.");
@@ -166,7 +166,7 @@ export default function LatexEditor({
         setLatexCode(res.latex);
         setShowAiModal(false);
         setAiPrompt("");
-        toast.success("LaTeX resume updated with AI optimizations!");
+        toast.success("LaTeX resume updated with smart optimizations!");
       } else {
         toast.error(res.error || "Failed to refine LaTeX code.");
       }
@@ -233,13 +233,13 @@ export default function LatexEditor({
             </button>
           </div>
 
-          {/* AI Refine Button */}
+          {/* Smart Refine Button */}
           <Button
             onClick={() => setShowAiModal(true)}
             variant="outline"
             className="h-9 px-3 rounded-xl border-primary-200/40 bg-primary-200/10 text-primary-200 hover:bg-primary-200/20 text-xs gap-1.5 font-semibold"
           >
-            <Sparkles size={14} /> AI Tailor
+            <Sparkles size={14} /> Smart Tailor
           </Button>
 
           {/* Download PDF Button */}
@@ -472,7 +472,7 @@ export default function LatexEditor({
         )}
       </div>
 
-      {/* AI Tailoring Modal / Drawer */}
+      {/* Smart Tailoring Modal / Drawer */}
       {showAiModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
           <div className="w-full max-w-lg p-6 bg-dark-200 rounded-3xl border border-primary-200/30 shadow-2xl flex flex-col gap-4">
@@ -482,7 +482,7 @@ export default function LatexEditor({
                   <Sparkles size={20} />
                 </div>
                 <div>
-                  <h4 className="text-lg font-bold text-white">AI LaTeX Resume Tailor</h4>
+                  <h4 className="text-lg font-bold text-white">LaTeX Resume Tailor</h4>
                   <p className="text-xs text-light-400">
                     Provide instructions to optimize or rewrite your LaTeX resume
                   </p>
@@ -536,12 +536,12 @@ export default function LatexEditor({
                 {isPendingAi ? (
                   <>
                     <Loader2 size={14} className="animate-spin" />
-                    Optimizing with Groq AI...
+                    Optimizing resume...
                   </>
                 ) : (
                   <>
                     <Sparkles size={14} />
-                    Apply AI Enhancements
+                    Apply Enhancements
                   </>
                 )}
               </Button>

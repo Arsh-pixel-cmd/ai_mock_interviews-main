@@ -1,10 +1,12 @@
 "use server";
 
-import { generateObject } from "ai";
+import { generateObject, generateText } from "ai";
 import { groq } from "@ai-sdk/groq";
+import { revalidatePath } from "next/cache";
 
 import { query, queryFirst, execute } from "@/lib/db";
 import { feedbackSchema, GROQ_MODEL } from "@/constants";
+import { getRandomInterviewCover } from "@/lib/utils";
 
 interface RawInterviewRow {
   id: string;
@@ -167,4 +169,109 @@ export async function getInterviewsByUserId(
   );
 
   return rows.map(parseInterviewRow);
+}
+
+export async function generateAndCreateInterview(params: {
+  role: string;
+  type?: string;
+  level?: string;
+  techstack: string[] | string;
+  amount?: number;
+  userId: string;
+  customQuestions?: string[];
+}): Promise<{ success: boolean; interviewId?: string; error?: string }> {
+  try {
+    const { role, type = "Technical", level = "Mid-Level", amount = 5, userId } = params;
+
+    if (!role || !userId) {
+      return { success: false, error: "Role and User ID are required" };
+    }
+
+    const techstackArray: string[] = Array.isArray(params.techstack)
+      ? params.techstack
+      : typeof params.techstack === "string"
+      ? (params.techstack as string).split(",").map((s) => s.trim()).filter(Boolean)
+      : ["JavaScript", "React"];
+
+    let questions: string[] = [];
+
+    if (params.customQuestions && params.customQuestions.length > 0) {
+      questions = params.customQuestions;
+    } else {
+      const { text } = await generateText({
+        model: groq(GROQ_MODEL),
+        prompt: `You are an expert technical interviewer preparing questions for a candidate interview.
+Role: ${role}
+Seniority Level: ${level}
+Tech Stack: ${techstackArray.join(", ")}
+Interview Focus: ${type}
+Question Count: ${amount}
+
+Return ONLY a valid JSON array of questions without markdown formatting or code blocks.
+Example format:
+["Can you describe a challenging project you built using ${techstackArray[0] || 'your core stack'}?", "How do you handle edge cases and performance bottlenecks?"]
+`,
+      });
+
+      try {
+        questions = JSON.parse(text);
+      } catch {
+        const match = text.match(/\[[\s\S]*\]/);
+        if (match) {
+          questions = JSON.parse(match[0]);
+        } else {
+          questions = [
+            `Can you introduce yourself and describe your experience working with ${techstackArray.slice(0, 3).join(", ")} as a ${role}?`,
+            `What is one of the most challenging technical problems you solved recently, and how did you approach the architectural trade-offs?`,
+            `How do you ensure performance, code quality, and test coverage in your applications?`,
+            `Can you explain how state management and asynchronous data flow work in your typical project setup?`,
+            `Tell me about a time you had a technical disagreement with a team member and how you resolved it constructively.`,
+          ];
+        }
+      }
+    }
+
+    const interviewId = crypto.randomUUID();
+    const coverImage = getRandomInterviewCover();
+    const createdAt = new Date().toISOString();
+
+    await execute(
+      "INSERT INTO interviews (id, role, type, level, techstack, questions, userId, finalized, coverImage, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
+      [
+        interviewId,
+        role,
+        type,
+        level,
+        JSON.stringify(techstackArray),
+        JSON.stringify(questions),
+        userId,
+        coverImage,
+        createdAt,
+      ]
+    );
+
+    revalidatePath("/");
+    revalidatePath("/interview");
+
+    return { success: true, interviewId };
+  } catch (error: any) {
+    console.error("Error creating interview:", error);
+    return { success: false, error: error.message || "Failed to generate interview" };
+  }
+}
+
+export async function deleteInterview(
+  interviewId: string,
+  userId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    await execute("DELETE FROM feedback WHERE interviewId = ? AND userId = ?", [interviewId, userId]);
+    await execute("DELETE FROM interviews WHERE id = ? AND userId = ?", [interviewId, userId]);
+
+    revalidatePath("/");
+    return { success: true };
+  } catch (error: any) {
+    console.error("Error deleting interview:", error);
+    return { success: false, error: error.message || "Failed to delete interview" };
+  }
 }
