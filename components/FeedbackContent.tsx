@@ -3,7 +3,7 @@
 import { useRef } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import dayjs from "dayjs";
+import { formatDateTime } from "@/lib/utils/date";
 import { useReactToPrint } from "react-to-print";
 import { Download } from "lucide-react";
 
@@ -60,7 +60,7 @@ const FeedbackContent = ({ feedback, interview }: FeedbackContentProps) => {
                 <Image src="/calendar.svg" width={22} height={22} alt="calendar" className="print:hidden"/>
                 <p className="text-light-100 print:text-gray-600">
                   {feedback?.createdAt
-                    ? dayjs(feedback.createdAt).format("MMM D, YYYY h:mm A")
+                    ? formatDateTime(feedback.createdAt)
                     : "N/A"}
                 </p>
               </div>

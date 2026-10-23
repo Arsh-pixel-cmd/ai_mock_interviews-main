@@ -145,7 +145,3 @@ export const getInterviewCoverImage = (
   const stableIndex = Math.abs(hash) % interviewCovers.length;
   return `/covers${interviewCovers[stableIndex]}`;
 };
-
-export const getRandomInterviewCover = (role: string = "", techstack?: string[] | string) => {
-  return getInterviewCoverImage(role, techstack);
-};

@@ -1,4 +1,4 @@
-import dayjs from "dayjs";
+import { formatDate } from "@/lib/utils/date";
 import Link from "next/link";
 import Image from "next/image";
 import { Play, RotateCcw, FileText } from "lucide-react";
@@ -36,9 +36,9 @@ const InterviewCard = async ({
       Technical: "bg-emerald-600/30 text-emerald-300 border-emerald-500/30",
     }[normalizedType] || "bg-light-600/30 text-light-100 border-white/10";
 
-  const formattedDate = dayjs(
+  const formattedDate = formatDate(
     feedback?.createdAt || createdAt || Date.now()
-  ).format("MMM D, YYYY");
+  );
 
   const hasFeedback = Boolean(feedback);
   const coverSrc = getInterviewCoverImage(role, techstack, coverImage);

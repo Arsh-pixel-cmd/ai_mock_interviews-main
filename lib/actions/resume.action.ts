@@ -5,16 +5,9 @@ import fs from "fs";
 import { pathToFileURL } from "url";
 import zlib from "zlib";
 import { generateObject, generateText } from "ai";
-import { groq } from "@ai-sdk/groq";
 import { PDFParse } from "pdf-parse";
 import { z } from "zod";
-import { GROQ_MODEL } from "@/constants";
-
-const resumeAnalysisSchema = z.object({
-  score: z.number().describe("Score out of 10"),
-  isAtsFriendly: z.boolean().describe("Whether the resume is ATS friendly"),
-  improvements: z.array(z.string()).describe("List of improvements"),
-});
+import { getModel } from "@/lib/ai/ai-provider";
 
 const detailedAnalysisSchema = z.object({
   overallMatchScore: z.number().describe("Overall JD match percentage (0-100)"),
@@ -173,42 +166,6 @@ async function extractResumeText(file?: File | null, rawText?: string): Promise<
   return await file.text();
 }
 
-
-/**
- * Simple baseline resume analyzer (backward-compatible)
- */
-export async function analyzeResume(formData: FormData) {
-  const file = formData.get("resume") as File;
-
-  if (!file) {
-    return { success: false, error: "No file uploaded" };
-  }
-
-  try {
-    const text = await extractResumeText(file);
-
-    const { object } = await generateObject({
-      model: groq(GROQ_MODEL),
-      schema: resumeAnalysisSchema,
-      prompt: `
-        Analyze this resume for ATS (Applicant Tracking System) friendliness.
-        Resume Text:
-        ${text}
-
-        Provide:
-        1. A score out of 10 based on content, formatting (inferred from text structure), and keywords.
-        2. Whether it is considered ATS friendly (simple structure, standard headings).
-        3. A list of specific improvements to increase the score and ATS compatibility.
-      `,
-    });
-
-    return { success: true, analysis: object };
-  } catch (error: any) {
-    console.error("Error analyzing resume:", error);
-    return { success: false, error: error.message || "Failed to analyze resume" };
-  }
-}
-
 /**
  * Deep Resume Analyzer based on Job Description (JD)
  * Evaluates ATS compatibility, missing keywords, flaws, quantifiable metrics, and generates optimized LaTeX
@@ -239,7 +196,7 @@ export async function analyzeResumeWithJD(formData: FormData): Promise<{
       : `Role: ${targetRole}. Looking for a capable, proactive engineer with modern software development skills, strong technical fundamentals, teamwork, and clean coding practices.`;
 
     const { object } = await generateObject({
-      model: groq(GROQ_MODEL),
+      model: getModel(),
       schema: detailedAnalysisSchema,
       temperature: 0,
       maxOutputTokens: 10000,
@@ -414,7 +371,7 @@ CRITICAL FORMATTING REQUIREMENTS:
 `;
 
     const { text } = await generateText({
-      model: groq(GROQ_MODEL),
+      model: getModel(),
       temperature: 0,
       maxOutputTokens: 10000,
       prompt,

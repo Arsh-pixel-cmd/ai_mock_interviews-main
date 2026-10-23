@@ -1,11 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { Plus, Sparkles, Loader2, X, Check, Briefcase, Layers, Target, HelpCircle } from "lucide-react";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { generateAndCreateInterview } from "@/lib/actions/general.action";
+import { useInterviewForm } from "@/hooks/useInterviewForm";
+import { ROLE_PRESETS, POPULAR_TECHS } from "@/constants/interview-config";
 
 interface CreateInterviewModalProps {
   userId: string;
@@ -15,30 +14,6 @@ interface CreateInterviewModalProps {
   showIcon?: boolean;
 }
 
-const ROLE_PRESETS = [
-  "Full Stack Developer",
-  "Frontend Engineer (React)",
-  "Backend Engineer (Node/Go)",
-  "DevOps & Cloud Engineer",
-  "System Architect",
-  "Data Engineer",
-];
-
-const POPULAR_TECHS = [
-  "React",
-  "TypeScript",
-  "Next.js",
-  "Node.js",
-  "Python",
-  "PostgreSQL",
-  "Docker",
-  "AWS",
-  "Tailwind CSS",
-  "GraphQL",
-  "Redis",
-  "Go",
-];
-
 export default function CreateInterviewModal({
   userId,
   triggerText = "New Interview",
@@ -46,83 +21,29 @@ export default function CreateInterviewModal({
   variant = "primary",
   showIcon = true,
 }: CreateInterviewModalProps) {
-  const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
 
-  // Form states
-  const [role, setRole] = useState("Full Stack Developer");
-  const [level, setLevel] = useState("Mid-Level");
-  const [type, setType] = useState("Technical");
-  const [techstack, setTechstack] = useState<string[]>([
-    "React",
-    "TypeScript",
-    "Node.js",
-  ]);
-  const [customTechInput, setCustomTechInput] = useState("");
-  const [amount, setAmount] = useState(5);
-
-  const toggleTech = (tech: string) => {
-    if (techstack.includes(tech)) {
-      setTechstack(techstack.filter((t) => t !== tech));
-    } else {
-      setTechstack([...techstack, tech]);
-    }
-  };
-
-  const addCustomTech = () => {
-    const trimmed = customTechInput.trim();
-    if (!trimmed) return;
-    if (!techstack.includes(trimmed)) {
-      setTechstack([...techstack, trimmed]);
-    }
-    setCustomTechInput("");
-  };
-
-  const handleKeyDownTech = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" || e.key === ",") {
-      e.preventDefault();
-      addCustomTech();
-    }
-  };
-
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!role.trim()) {
-      toast.error("Please enter a target role");
-      return;
-    }
-    if (techstack.length === 0) {
-      toast.error("Please select at least one technology");
-      return;
-    }
-
-    try {
-      setLoading(true);
-      toast.info("Generating interview questions tailored to your stack...");
-
-      const res = await generateAndCreateInterview({
-        role: role.trim(),
-        level,
-        type,
-        techstack,
-        amount,
-        userId,
-      });
-
-      if (res.success && res.interviewId) {
-        toast.success("Interview created! Loading interview room...");
-        setIsOpen(false);
-        router.push(`/interview/${res.interviewId}`);
-      } else {
-        toast.error(res.error || "Failed to create interview");
-        setLoading(false);
-      }
-    } catch (err: any) {
-      toast.error(err.message || "An error occurred while creating the interview");
-      setLoading(false);
-    }
-  };
+  const {
+    loading,
+    role,
+    level,
+    type,
+    techstack,
+    customTechInput,
+    amount,
+    setRole,
+    setLevel,
+    setType,
+    setCustomTechInput,
+    setAmount,
+    toggleTech,
+    addCustomTech,
+    handleKeyDownTech,
+    handleCreate,
+  } = useInterviewForm({
+    userId,
+    onSuccess: () => setIsOpen(false),
+  });
 
   return (
     <>

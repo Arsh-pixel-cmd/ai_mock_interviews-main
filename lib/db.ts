@@ -13,14 +13,20 @@ interface D1DatabaseLike {
   prepare(query: string): D1PreparedStatementLike;
 }
 
-// Helper to get native Cloudflare binding if available
+// Singleton: cached D1 binding (resolved once per process lifetime)
+let cachedDb: D1DatabaseLike | null | undefined = undefined;
+
+// Helper to get native Cloudflare binding if available (with Singleton cache)
 async function getD1Binding(): Promise<D1DatabaseLike | null> {
+  if (cachedDb !== undefined) return cachedDb;
+
   try {
     const { getCloudflareContext } = await import("@opennextjs/cloudflare");
     const ctx = await getCloudflareContext({ async: true });
     const dbBinding = (ctx?.env as Record<string, unknown>)?.DB as D1DatabaseLike | undefined;
     if (dbBinding) {
-      return dbBinding;
+      cachedDb = dbBinding;
+      return cachedDb;
     }
   } catch {
     // Not running inside Cloudflare runtime
@@ -28,10 +34,12 @@ async function getD1Binding(): Promise<D1DatabaseLike | null> {
 
   const globalDb = (globalThis as unknown as Record<string, unknown>).DB as D1DatabaseLike | undefined;
   if (globalDb) {
-    return globalDb;
+    cachedDb = globalDb;
+    return cachedDb;
   }
 
-  return null;
+  cachedDb = null;
+  return cachedDb;
 }
 
 // Query helper via Cloudflare D1 REST API (used in local development)
