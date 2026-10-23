@@ -660,11 +660,31 @@ function parseNonTableSectionContent(text: string): ParsedItem[] {
       return items;
     }
 
-    // Outer itemize without nested itemize (e.g. Education or Skills in Jake's resume)
+    // Outer itemize without nested itemize (e.g. Education or Skills in Jake's resume, or Achievements in standard resumes)
     const rawItems = innerContent
       .split(/\\item\b/)
       .map((s) => s.trim())
       .filter((s) => s.length > 0);
+
+    // If items are bullet points (e.g. Achievements, Coursework) rather than skill key-values or job entries
+    const isSkillsOrKeyVal = rawItems.some((it) =>
+      /\\textbf\{[^}]+:\s*\}|\\textbf\{[^}]+\}\s*\{:\s*|\b(?:Languages|Frameworks|Databases|Tools|Developer Tools)\b/i.test(it)
+    );
+    const hasAnyHfill = rawItems.some((it) => it.includes("\\hfill"));
+
+    if (!isSkillsOrKeyVal && !hasAnyHfill) {
+      const bullets = rawItems
+        .map((it) => cleanLayoutSpaces(it.replace(/^\\small\{/g, "").replace(/\}[ \t]*$/g, "")))
+        .filter((it) => it.length > 0 && it !== "}" && it !== "}}");
+
+      if (bullets.length > 0) {
+        items.push({
+          type: "bullet_list",
+          bullets,
+        });
+        return items;
+      }
+    }
 
     for (const rawItem of rawItems) {
       const cleanItem = rawItem
@@ -1193,10 +1213,10 @@ export const LatexPreview = forwardRef<HTMLDivElement, LatexPreviewProps>(
                       return (
                         <ul
                           key={itemIdx}
-                          className="list-disc ml-4 space-y-0.5 text-[11px] text-gray-800 leading-relaxed"
+                          className="list-disc ml-4 space-y-0.5 text-[11px] !text-gray-900 marker:!text-gray-900 leading-relaxed"
                         >
                           {item.bullets.map((bullet, bIdx) => (
-                            <li key={bIdx} className="pl-0.5">
+                            <li key={bIdx} className="pl-0.5 !text-gray-900 marker:!text-gray-900">
                               {renderInlineLatex(bullet)}
                             </li>
                           ))}
@@ -1256,9 +1276,9 @@ export const LatexPreview = forwardRef<HTMLDivElement, LatexPreviewProps>(
 
                         {/* Sub-Bullets List */}
                         {item.bullets && item.bullets.length > 0 && (
-                          <ul className="list-disc ml-4 mt-1 space-y-0.5 text-[11px] text-gray-800 leading-relaxed">
+                          <ul className="list-disc ml-4 mt-1 space-y-0.5 text-[11px] !text-gray-900 marker:!text-gray-900 leading-relaxed">
                             {item.bullets.map((bullet, bIdx) => (
-                              <li key={bIdx} className="pl-0.5">
+                              <li key={bIdx} className="pl-0.5 !text-gray-900 marker:!text-gray-900">
                                 {renderInlineLatex(bullet)}
                               </li>
                             ))}

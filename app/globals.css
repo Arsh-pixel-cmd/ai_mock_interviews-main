@@ -153,9 +153,22 @@
   ul {
     @apply list-disc list-inside;
   }
-  li {
+  li:not(.print-resume-sheet *) {
     @apply text-light-100;
   }
+}
+
+.print-resume-sheet {
+  background-color: #ffffff !important;
+  color: #111827 !important;
+}
+
+.print-resume-sheet li {
+  color: #111827 !important;
+}
+
+.print-resume-sheet ul {
+  list-style-type: disc !important;
 }
 
 @layer components {
