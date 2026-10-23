@@ -21,12 +21,13 @@ import {
   Check,
   Loader2,
   Edit3,
+  Upload,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { LatexPreview } from "@/components/LatexPreview";
-import { generateCustomLatexResume } from "@/lib/actions/resume.action";
+import { generateCustomLatexResume, convertResumeToLatexAction } from "@/lib/actions/resume.action";
 import { DEFAULT_LATEX_TEMPLATE } from "@/constants";
 
 interface LatexEditorProps {
@@ -53,8 +54,11 @@ export default function LatexEditor({
   const [showAiModal, setShowAiModal] = useState(false);
   const [isPendingAi, startAiTransition] = useTransition();
 
+  const [isConvertingPdf, setIsConvertingPdf] = useState(false);
+
   const printRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Sync latexCode when initialLatex updates from parent
   useEffect(() => {
@@ -86,6 +90,54 @@ export default function LatexEditor({
     } catch {
       toast.error("Failed to copy code");
     }
+  };
+
+  // Upload and import resume PDF or .tex file
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const uploadedFile = e.target.files?.[0];
+    if (!uploadedFile) return;
+
+    if (uploadedFile.name.toLowerCase().endsWith(".tex")) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const content = event.target?.result as string;
+        if (content) {
+          handleCodeChange(content);
+          toast.success(`Loaded ${uploadedFile.name}`);
+        }
+      };
+      reader.readAsText(uploadedFile);
+      e.target.value = "";
+      return;
+    }
+
+    if (uploadedFile.name.toLowerCase().endsWith(".pdf") || uploadedFile.type === "application/pdf") {
+      setIsConvertingPdf(true);
+      startAiTransition(async () => {
+        try {
+          const formData = new FormData();
+          formData.append("resume", uploadedFile);
+          formData.append("targetRole", targetRole);
+          formData.append("jobDescription", jobDescription);
+
+          const res = await convertResumeToLatexAction(formData);
+          if (res.success && res.latex) {
+            handleCodeChange(res.latex);
+            toast.success("Resume PDF converted to LaTeX & preview rendered!");
+          } else {
+            toast.error(res.error || "Could not convert PDF to LaTeX.");
+          }
+        } catch {
+          toast.error("Failed to convert PDF resume.");
+        } finally {
+          setIsConvertingPdf(false);
+          if (fileInputRef.current) fileInputRef.current.value = "";
+        }
+      });
+      return;
+    }
+
+    toast.error("Please upload a .pdf or .tex document.");
   };
 
   // Download .tex file
@@ -232,6 +284,29 @@ export default function LatexEditor({
               <Eye size={14} /> Preview
             </button>
           </div>
+
+          {/* Import PDF / .tex button */}
+          <Button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isConvertingPdf}
+            variant="outline"
+            className="h-9 px-3 rounded-xl border-white/10 bg-dark-300 text-light-100 hover:text-white hover:border-primary-200/40 text-xs gap-1.5 font-medium transition-all cursor-pointer"
+            title="Import a PDF resume to convert to LaTeX or open an existing .tex file"
+          >
+            {isConvertingPdf ? (
+              <Loader2 size={14} className="animate-spin text-primary-200" />
+            ) : (
+              <Upload size={14} className="text-primary-200" />
+            )}
+            <span>{isConvertingPdf ? "Converting PDF..." : "Import PDF / .tex"}</span>
+          </Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.tex"
+            onChange={handleFileUpload}
+            className="hidden"
+          />
 
           {/* Smart Refine Button */}
           <Button

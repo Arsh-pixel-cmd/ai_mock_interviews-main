@@ -420,9 +420,13 @@ CRITICAL FORMATTING REQUIREMENTS:
       prompt,
     });
 
-    // Clean up any stray markdown fences if the model output them
+    // Clean up any markdown fences and extract cleanly from \documentclass to \end{document}
     let cleanLatex = text.trim();
-    if (cleanLatex.startsWith("```latex")) {
+    const docStart = cleanLatex.indexOf("\\documentclass");
+    const docEnd = cleanLatex.lastIndexOf("\\end{document}");
+    if (docStart !== -1 && docEnd !== -1) {
+      cleanLatex = cleanLatex.slice(docStart, docEnd + "\\end{document}".length);
+    } else if (cleanLatex.startsWith("```latex")) {
       cleanLatex = cleanLatex.replace(/^```latex\n?/, "").replace(/\n?```$/, "");
     } else if (cleanLatex.startsWith("```")) {
       cleanLatex = cleanLatex.replace(/^```\n?/, "").replace(/\n?```$/, "");

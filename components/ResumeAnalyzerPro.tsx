@@ -98,6 +98,8 @@ export default function ResumeAnalyzerPro({
         return;
       }
       setFile(selected);
+      // Reset latexCode to template so opening LaTeX studio will convert this new file
+      setLatexCode(DEFAULT_LATEX_TEMPLATE);
       toast.success(`Loaded: ${selected.name}`);
     }
   };
@@ -135,20 +137,20 @@ export default function ResumeAnalyzerPro({
   };
 
   // Open LaTeX Studio & guarantee automatic conversion from uploaded resume if not already done
-  const handleOpenLatexStudio = () => {
+  const handleOpenLatexStudio = (forceConvert: boolean = false) => {
     setActiveTab("latex");
     setLatexConversionFailed(false);
 
-    // If analysis already pre-generated customized LaTeX, ensure it's loaded
-    if (analysis?.suggestedLatexCode) {
+    // If analysis already pre-generated customized LaTeX and not forcing re-conversion, ensure it's loaded
+    if (!forceConvert && analysis?.suggestedLatexCode) {
       setLatexCode(analysis.suggestedLatexCode);
       return;
     }
 
-    // If user has uploaded a file or entered text, but latexCode is still the default template, convert automatically
+    // If user has uploaded a file or entered text, convert automatically
     if (
       (file || (resumeText && resumeText.trim().length >= 30)) &&
-      latexCode === DEFAULT_LATEX_TEMPLATE
+      (latexCode === DEFAULT_LATEX_TEMPLATE || forceConvert)
     ) {
       setLatexConverting(true);
       startTransition(async () => {
@@ -199,7 +201,7 @@ export default function ResumeAnalyzerPro({
             <Briefcase size={16} /> 1. ATS & JD Analyzer
           </button>
           <button
-            onClick={handleOpenLatexStudio}
+            onClick={() => handleOpenLatexStudio(false)}
             className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all ${
               activeTab === "latex"
                 ? "bg-primary-200 text-dark-100 shadow-md font-bold"
@@ -362,23 +364,45 @@ export default function ResumeAnalyzerPro({
                   Multi-factor ATS rubric evaluation • Powered by Llama 3.3 70B
                 </p>
 
-                <Button
-                  onClick={handleAnalyze}
-                  disabled={isPending || (!file && (!resumeText || resumeText.length < 30))}
-                  className="btn-primary w-full sm:w-auto px-8 py-3 text-sm flex items-center justify-center gap-2 shadow-xl shadow-primary-200/20"
-                >
-                  {isPending ? (
-                    <>
-                      <Loader2 className="animate-spin" size={18} />
-                      Scanning ATS & Keywords...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles size={18} />
-                      Analyze Resume & Check ATS Match
-                    </>
-                  )}
-                </Button>
+                <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => handleOpenLatexStudio(true)}
+                    disabled={latexConverting || (!file && (!resumeText || resumeText.length < 30))}
+                    className="w-full sm:w-auto px-5 py-3 text-sm flex items-center justify-center gap-2 border-primary-200/40 text-primary-200 hover:bg-primary-200/10 cursor-pointer"
+                  >
+                    {latexConverting ? (
+                      <>
+                        <Loader2 className="animate-spin" size={16} />
+                        Converting to LaTeX...
+                      </>
+                    ) : (
+                      <>
+                        <FileCode size={16} />
+                        Convert to LaTeX & Preview
+                      </>
+                    )}
+                  </Button>
+
+                  <Button
+                    onClick={handleAnalyze}
+                    disabled={isPending || (!file && (!resumeText || resumeText.length < 30))}
+                    className="btn-primary w-full sm:w-auto px-7 py-3 text-sm flex items-center justify-center gap-2 shadow-xl shadow-primary-200/20"
+                  >
+                    {isPending ? (
+                      <>
+                        <Loader2 className="animate-spin" size={18} />
+                        Scanning ATS & Keywords...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles size={18} />
+                        Analyze Resume & Check ATS Match
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
@@ -488,7 +512,7 @@ export default function ResumeAnalyzerPro({
                   </div>
                 </div>
                 <Button
-                  onClick={handleOpenLatexStudio}
+                  onClick={() => handleOpenLatexStudio(false)}
                   className="btn-primary flex items-center gap-2 whitespace-nowrap text-xs"
                 >
                   Edit in LaTeX Studio & Export PDF <ArrowRight size={14} />

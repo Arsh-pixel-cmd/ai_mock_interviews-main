@@ -8,18 +8,33 @@ interface LatexPreviewProps {
   editable?: boolean;
 }
 
-interface ParsedEntry {
-  type: "entry" | "line";
-  left: string;
-  right: string;
-  subtitle?: string;
-  subRight?: string;
-  bullets: string[];
-}
+export type ParsedItem =
+  | {
+      type: "table";
+      alignments?: ("left" | "right" | "center")[];
+      rows: string[][];
+    }
+  | {
+      type: "entry";
+      left: string;
+      right?: string;
+      subtitle?: string;
+      subRight?: string;
+      bullets: string[];
+    }
+  | {
+      type: "bullet_list";
+      bullets: string[];
+    }
+  | {
+      type: "line";
+      left: string;
+      right?: string;
+    };
 
-interface ParsedSection {
+export interface ParsedSection {
   title: string;
-  entries: ParsedEntry[];
+  items: ParsedItem[];
 }
 
 /**
@@ -82,6 +97,7 @@ function cleanLatexText(text: string): string {
           "centering",
           "raggedright",
           "raggedbottom",
+          "raggedleft",
           "noindent",
           "titlerule",
           "hrule",
@@ -107,8 +123,20 @@ function cleanLatexText(text: string): string {
     .trim();
 }
 
+/**
+ * Strips vertical/horizontal spacing and layout annotations that should not appear in resume text
+ */
+function cleanLayoutSpaces(str: string): string {
+  if (!str) return "";
+  return str
+    .replace(/\\(?:vspace|hspace)\*?(?:\s*\[[^\]]*\])?\s*\{[^}]*\}/g, "")
+    .replace(/\\(?:vspace|hspace)\*?(?:\s*\[[^\]]*\])?/g, "")
+    .replace(/\\(?:smallskip|medskip|bigskip|noindent)\b/g, "")
+    .trim();
+}
+
 type InlineToken =
-  | { type: "text"; value: string }
+  | { type: "text"; value: string; superscript?: boolean; subscript?: boolean }
   | { type: "href"; url: string; children: InlineToken[] }
   | { type: "bold"; children: InlineToken[] }
   | { type: "italic"; children: InlineToken[] }
@@ -118,7 +146,8 @@ type InlineToken =
   | { type: "newline" };
 
 /**
- * Tokenizes inline LaTeX formatting with full balanced-brace handling
+ * Tokenizes inline LaTeX formatting with full balanced-brace handling,
+ * multi-line href support, font weight, math superscripts, and spacing removal.
  */
 function tokenizeInlineLatex(text: string): InlineToken[] {
   if (!text) return [];
@@ -145,8 +174,14 @@ function tokenizeInlineLatex(text: string): InlineToken[] {
         .replace(/--/g, "–")
         .replace(/\\textbullet|\$\\bullet\$/g, "•")
         .replace(/\\([,;:!])/g, " ")
+        .replace(/\\quad|\\qquad|\\enspace/g, " ")
+        .replace(
+          /\\(?:small|footnotesize|scriptsize|large|Large|LARGE|Huge|huge|scshape|itshape|bfseries|noindent|centering|raggedright|raggedbottom|raggedleft)\b/g,
+          ""
+        )
+        .replace(/\\(?:vspace|hspace)\*?(?:\s*\[[^\]]*\])?\s*\{[^}]*\}/g, "")
+        .replace(/\\(?:vspace|hspace)\*?(?:\s*\[[^\]]*\])?/g, "")
         .replace(/\\(?:\s+|$)/g, " ")
-        .replace(/\\(?:small|footnotesize|large|Large|LARGE|Huge|huge|scshape|itshape|bfseries|noindent|centering|raggedright|raggedbottom)\b/g, "")
         .replace(/[{}]/g, "")
         .replace(/\\\s*/g, " ");
 
@@ -158,117 +193,131 @@ function tokenizeInlineLatex(text: string): InlineToken[] {
   };
 
   while (i < clean.length) {
-    // 1. \href{url}{label}
-    if (clean.startsWith("\\href", i)) {
-      const firstBraceIdx = clean.indexOf("{", i);
-      if (firstBraceIdx !== -1 && firstBraceIdx <= i + 6) {
-        const urlPart = getBalancedBraceContent(clean, firstBraceIdx);
-        if (urlPart) {
-          const secondBraceIdx = clean.indexOf("{", urlPart.endIndex + 1);
-          if (secondBraceIdx !== -1 && secondBraceIdx <= urlPart.endIndex + 4) {
-            const labelPart = getBalancedBraceContent(clean, secondBraceIdx);
-            if (labelPart) {
-              flushText();
-              tokens.push({
-                type: "href",
-                url: urlPart.content.trim(),
-                children: tokenizeInlineLatex(labelPart.content),
-              });
-              i = labelPart.endIndex + 1;
-              continue;
-            }
+    // 0. Layout macros to strip with arguments: \vspace{...}, \hspace{...}
+    const layoutMatch = clean.slice(i).match(/^\\(?:vspace|hspace)\*?(?:\s*\[[^\]]*\])?\s*\{[^}]*\}/);
+    if (layoutMatch) {
+      flushText();
+      i += layoutMatch[0].length;
+      continue;
+    }
+
+    // 1. \href{url}{label} - supports any whitespace/newlines between href, {url}, and {label}
+    const hrefMatch = clean.slice(i).match(/^\\href\s*\{/);
+    if (hrefMatch) {
+      const firstBraceIdx = i + hrefMatch[0].length - 1;
+      const urlPart = getBalancedBraceContent(clean, firstBraceIdx);
+      if (urlPart) {
+        // Look ahead for optional whitespace/newlines followed by second '{'
+        const afterUrl = clean.slice(urlPart.endIndex + 1);
+        const nextBraceMatch = afterUrl.match(/^\s*\{/);
+        if (nextBraceMatch) {
+          const secondBraceIdx = urlPart.endIndex + 1 + nextBraceMatch[0].length - 1;
+          const labelPart = getBalancedBraceContent(clean, secondBraceIdx);
+          if (labelPart) {
+            flushText();
+            tokens.push({
+              type: "href",
+              url: urlPart.content.trim(),
+              children: tokenizeInlineLatex(labelPart.content),
+            });
+            i = labelPart.endIndex + 1;
+            continue;
           }
         }
+        // Fallback: single argument \href{url}
+        flushText();
+        tokens.push({
+          type: "href",
+          url: urlPart.content.trim(),
+          children: [{ type: "text", value: urlPart.content.trim() }],
+        });
+        i = urlPart.endIndex + 1;
+        continue;
       }
     }
 
     // 2. \url{url}
-    if (clean.startsWith("\\url", i)) {
-      const braceIdx = clean.indexOf("{", i);
-      if (braceIdx !== -1 && braceIdx <= i + 5) {
-        const part = getBalancedBraceContent(clean, braceIdx);
-        if (part) {
-          flushText();
-          tokens.push({
-            type: "href",
-            url: part.content.trim(),
-            children: [{ type: "text", value: part.content.trim() }],
-          });
-          i = part.endIndex + 1;
-          continue;
-        }
+    const urlMatch = clean.slice(i).match(/^\\url\s*\{/);
+    if (urlMatch) {
+      const firstBraceIdx = i + urlMatch[0].length - 1;
+      const part = getBalancedBraceContent(clean, firstBraceIdx);
+      if (part) {
+        flushText();
+        tokens.push({
+          type: "href",
+          url: part.content.trim(),
+          children: [{ type: "text", value: part.content.trim() }],
+        });
+        i = part.endIndex + 1;
+        continue;
       }
     }
 
     // 3. \textbf{...}
-    if (clean.startsWith("\\textbf", i)) {
-      const braceIdx = clean.indexOf("{", i);
-      if (braceIdx !== -1 && braceIdx <= i + 8) {
-        const part = getBalancedBraceContent(clean, braceIdx);
-        if (part) {
-          flushText();
-          tokens.push({
-            type: "bold",
-            children: tokenizeInlineLatex(part.content),
-          });
-          i = part.endIndex + 1;
-          continue;
-        }
+    const boldMatch = clean.slice(i).match(/^\\textbf\s*\{/);
+    if (boldMatch) {
+      const braceIdx = i + boldMatch[0].length - 1;
+      const part = getBalancedBraceContent(clean, braceIdx);
+      if (part) {
+        flushText();
+        tokens.push({
+          type: "bold",
+          children: tokenizeInlineLatex(part.content),
+        });
+        i = part.endIndex + 1;
+        continue;
       }
     }
 
     // 4. \textit{...} or \emph{...}
-    if (clean.startsWith("\\textit", i) || clean.startsWith("\\emph", i)) {
-      const braceIdx = clean.indexOf("{", i);
-      if (braceIdx !== -1 && braceIdx <= i + 8) {
-        const part = getBalancedBraceContent(clean, braceIdx);
-        if (part) {
-          flushText();
-          tokens.push({
-            type: "italic",
-            children: tokenizeInlineLatex(part.content),
-          });
-          i = part.endIndex + 1;
-          continue;
-        }
+    const italicMatch = clean.slice(i).match(/^\\(?:textit|emph)\s*\{/);
+    if (italicMatch) {
+      const braceIdx = i + italicMatch[0].length - 1;
+      const part = getBalancedBraceContent(clean, braceIdx);
+      if (part) {
+        flushText();
+        tokens.push({
+          type: "italic",
+          children: tokenizeInlineLatex(part.content),
+        });
+        i = part.endIndex + 1;
+        continue;
       }
     }
 
     // 5. \underline{...}
-    if (clean.startsWith("\\underline", i)) {
-      const braceIdx = clean.indexOf("{", i);
-      if (braceIdx !== -1 && braceIdx <= i + 11) {
-        const part = getBalancedBraceContent(clean, braceIdx);
-        if (part) {
-          flushText();
-          tokens.push({
-            type: "underline",
-            children: tokenizeInlineLatex(part.content),
-          });
-          i = part.endIndex + 1;
-          continue;
-        }
+    const underMatch = clean.slice(i).match(/^\\underline\s*\{/);
+    if (underMatch) {
+      const braceIdx = i + underMatch[0].length - 1;
+      const part = getBalancedBraceContent(clean, braceIdx);
+      if (part) {
+        flushText();
+        tokens.push({
+          type: "underline",
+          children: tokenizeInlineLatex(part.content),
+        });
+        i = part.endIndex + 1;
+        continue;
       }
     }
 
     // 6. \texttt{...}
-    if (clean.startsWith("\\texttt", i)) {
-      const braceIdx = clean.indexOf("{", i);
-      if (braceIdx !== -1 && braceIdx <= i + 8) {
-        const part = getBalancedBraceContent(clean, braceIdx);
-        if (part) {
-          flushText();
-          tokens.push({
-            type: "code",
-            value: part.content,
-          });
-          i = part.endIndex + 1;
-          continue;
-        }
+    const codeMatch = clean.slice(i).match(/^\\texttt\s*\{/);
+    if (codeMatch) {
+      const braceIdx = i + codeMatch[0].length - 1;
+      const part = getBalancedBraceContent(clean, braceIdx);
+      if (part) {
+        flushText();
+        tokens.push({
+          type: "code",
+          value: part.content,
+        });
+        i = part.endIndex + 1;
+        continue;
       }
     }
 
-    // 6b. \textsuperscript{...} and \textsubscript{...} (with or without braces)
+    // 6b. \textsuperscript{...} and \textsubscript{...}
     if (clean.startsWith("\\textsuperscript", i) || clean.startsWith("\\textsubscript", i)) {
       const isSup = clean.startsWith("\\textsuperscript", i);
       const cmdLen = isSup ? 16 : 14;
@@ -283,7 +332,7 @@ function tokenizeInlineLatex(text: string): InlineToken[] {
             value: part.content,
             superscript: isSup,
             subscript: !isSup,
-          } as any);
+          });
           i = part.endIndex + 1;
           continue;
         }
@@ -296,7 +345,7 @@ function tokenizeInlineLatex(text: string): InlineToken[] {
             value: wordMatch[1],
             superscript: isSup,
             subscript: !isSup,
-          } as any);
+          });
           i += cmdLen + wordMatch[0].length;
           continue;
         }
@@ -314,7 +363,7 @@ function tokenizeInlineLatex(text: string): InlineToken[] {
         value: val,
         superscript: isSup,
         subscript: !isSup,
-      } as any);
+      });
       i += mathSupSub[0].length;
       continue;
     }
@@ -336,7 +385,6 @@ function tokenizeInlineLatex(text: string): InlineToken[] {
       flushText();
       tokens.push({ type: "newline" });
       i += 2;
-      // Skip optional spacing like [1pt], [3pt]
       const afterBreak = clean.slice(i).match(/^\s*\[[^\]]*\]/);
       if (afterBreak) {
         i += afterBreak[0].length;
@@ -345,7 +393,7 @@ function tokenizeInlineLatex(text: string): InlineToken[] {
     }
 
     // 9. Handle bare brace groups {content} — recursively tokenize inner content
-    if (clean[i] === '{') {
+    if (clean[i] === "{") {
       const part = getBalancedBraceContent(clean, i);
       if (part) {
         flushText();
@@ -357,7 +405,7 @@ function tokenizeInlineLatex(text: string): InlineToken[] {
     }
 
     // 10. Skip stray closing braces
-    if (clean[i] === '}') {
+    if (clean[i] === "}") {
       flushText();
       i++;
       continue;
@@ -380,9 +428,8 @@ function renderTokensToReact(tokens: InlineToken[], keyPrefix = "tok"): React.Re
     const key = `${keyPrefix}-${idx}`;
     switch (token.type) {
       case "text": {
-        const t = token as any;
-        if (t.superscript) return <sup key={key} className="text-[0.7em]">{token.value}</sup>;
-        if (t.subscript) return <sub key={key} className="text-[0.7em]">{token.value}</sub>;
+        if (token.superscript) return <sup key={key} className="text-[0.7em]">{token.value}</sup>;
+        if (token.subscript) return <sub key={key} className="text-[0.7em]">{token.value}</sub>;
         return <span key={key}>{token.value}</span>;
       }
       case "bold":
@@ -446,236 +493,444 @@ function renderInlineLatex(text: string): React.ReactNode {
 }
 
 /**
- * Parses raw section LaTeX content into structured entries with header (left/right) and sub-bullets
+ * Extracts all table environments (tabular, tabular*, tabularx, tabulary)
  */
-function parseSectionContent(rawContent: string): ParsedEntry[] {
-  // Strip comments and normalize macros
+function extractTables(content: string) {
+  const tableRegex = /\\begin\{(tabular[xy*]?)\}([\s\S]*?)\\end\{\1\}/g;
+  const tables: {
+    fullMatch: string;
+    startIndex: number;
+    endIndex: number;
+    alignments: ("left" | "right" | "center")[];
+    rows: string[][];
+  }[] = [];
+  let m: RegExpExecArray | null;
+
+  while ((m = tableRegex.exec(content)) !== null) {
+    const full = m[0];
+    const bodyAndArgs = m[2];
+
+    // Find the column spec: in tabular{spec}, or tabularx{\textwidth}{spec}
+    let p = 0;
+    const braceGroups: string[] = [];
+    while (p < bodyAndArgs.length) {
+      while (p < bodyAndArgs.length && /\s/.test(bodyAndArgs[p])) p++;
+      if (bodyAndArgs[p] === "{") {
+        const bg = getBalancedBraceContent(bodyAndArgs, p);
+        if (bg) {
+          braceGroups.push(bg.content);
+          p = bg.endIndex + 1;
+          continue;
+        }
+      }
+      break;
+    }
+
+    const colSpecRaw = braceGroups.length > 0 ? braceGroups[braceGroups.length - 1] : "";
+    const tableBody = bodyAndArgs.slice(p);
+
+    // Parse colSpec to determine column alignments
+    const alignments: ("left" | "right" | "center")[] = [];
+    const cleanSpec = colSpecRaw.replace(/@\{[^}]*\}/g, "");
+    let sIdx = 0;
+    while (sIdx < cleanSpec.length) {
+      const ch = cleanSpec[sIdx];
+      if (ch === "r") {
+        alignments.push("right");
+        sIdx++;
+      } else if (ch === "c") {
+        alignments.push("center");
+        sIdx++;
+      } else if (ch === "l" || ch === "X") {
+        alignments.push("left");
+        sIdx++;
+      } else if (ch === "p" || ch === "m" || ch === "b") {
+        alignments.push("left");
+        sIdx++;
+        if (cleanSpec[sIdx] === "{") {
+          const bg = getBalancedBraceContent(cleanSpec, sIdx);
+          if (bg) sIdx = bg.endIndex + 1;
+        }
+      } else {
+        sIdx++;
+      }
+    }
+
+    const rawRows = tableBody
+      .split(/\\\\(?:\s*\[[^\]]*\])?/)
+      .map((r) => r.trim())
+      .filter((r) => {
+        const cleaned = r.replace(/\\(?:hline|toprule|midrule|bottomrule|cline\{[^}]*\})/g, "").trim();
+        return cleaned.length > 0;
+      });
+
+    const parsedRows: string[][] = [];
+    for (const rawRow of rawRows) {
+      const cleanRow = rawRow.replace(/\\(?:hline|toprule|midrule|bottomrule|cline\{[^}]*\})/g, "").trim();
+      if (!cleanRow) continue;
+      const cells = cleanRow.split("&").map((c) => c.trim());
+      parsedRows.push(cells);
+    }
+
+    tables.push({
+      fullMatch: full,
+      startIndex: m.index,
+      endIndex: m.index + full.length,
+      alignments,
+      rows: parsedRows,
+    });
+  }
+  return tables;
+}
+
+/**
+ * Parses raw section LaTeX content into structured items:
+ * - Table items
+ * - Entry items (with left, right, subtitle, subRight, bullets)
+ * - Direct bullet list items
+ * - Line items (for skills or single notes)
+ */
+function parseSectionContent(rawContent: string): ParsedItem[] {
   let text = rawContent.replace(/^[ \t]*%.*$/gm, "").trim();
 
   // Normalize standard Overleaf / Jake's resume macros
   text = text
-    .replace(/\\resumeSubHeadingListStart/g, "\\begin{itemize}")
-    .replace(/\\resumeSubHeadingListEnd/g, "\\end{itemize}")
+    .replace(/\\resumeSubHeadingListStart/g, "")
+    .replace(/\\resumeSubHeadingListEnd/g, "")
     .replace(/\\resumeItemListStart/g, "\\begin{itemize}")
     .replace(/\\resumeItemListEnd/g, "\\end{itemize}")
     .replace(/\\resumeItem\{/g, "\\item ")
     .replace(
       /\\resumeSubheading\{([^}]+)\}\{([^}]+)\}\{([^}]+)\}\{([^}]+)\}/g,
-      "\\item \\textbf{$1} $|$ {$3} \\hfill {$2} -- {$4}"
+      "\\textbf{$1} \\hfill {$2}\\\\\n{$3} \\hfill {$4}"
     )
-    .replace(/\\resumeProjectHeading\{([^}]+)\}\{([^}]+)\}/g, "\\item $1 \\hfill {$2}");
+    .replace(/\\resumeProjectHeading\{([^}]+)\}\{([^}]+)\}/g, "$1 \\hfill {$2}");
 
-  const entries: ParsedEntry[] = [];
+  const items: ParsedItem[] = [];
 
-  // Check for tabular environments (e.g. tabular* or tabular)
-  const tabularRegex = /\\begin\{tabular\*?\}(?:\{[^}]*\})*([\s\S]*?)\\end\{tabular\*?\}/g;
-  let tabMatch: RegExpExecArray | null;
-  let hasTabular = false;
-
-  while ((tabMatch = tabularRegex.exec(text)) !== null) {
-    hasTabular = true;
-    const rows = tabMatch[1].split(/\\\\/).map((r) => r.trim()).filter((r) => r.length > 0);
-    for (const row of rows) {
-      const cols = row.split("&").map((c) => c.trim());
-      if (cols.length >= 2) {
-        entries.push({
-          type: "entry",
-          left: cols[0],
-          right: cols[1],
-          bullets: [],
-        });
-      } else if (cols.length === 1) {
-        entries.push({
-          type: "line",
-          left: cols[0],
-          right: "",
-          bullets: [],
-        });
+  // 1. Extract tables first
+  const tables = extractTables(text);
+  if (tables.length > 0) {
+    let cursor = 0;
+    for (const tbl of tables) {
+      if (tbl.startIndex > cursor) {
+        const preTableText = text.slice(cursor, tbl.startIndex).trim();
+        if (preTableText) {
+          items.push(...parseNonTableSectionContent(preTableText));
+        }
+      }
+      items.push({
+        type: "table",
+        alignments: tbl.alignments,
+        rows: tbl.rows,
+      });
+      cursor = tbl.endIndex;
+    }
+    if (cursor < text.length) {
+      const postTableText = text.slice(cursor).trim();
+      if (postTableText) {
+        items.push(...parseNonTableSectionContent(postTableText));
       }
     }
+    return items;
   }
-  if (hasTabular) return entries;
 
-  // Environment-aware itemize scanner
-  const tokenRegex = /(\\begin\{itemize\}(?:\[(?:[^\[\]]*|\{[^}]*\})*\])?|\\end\{itemize\}|\\item\b)/g;
-  const tokens: { type: "begin" | "end" | "item" | "text"; value?: string }[] = [];
-  let lastIdx = 0;
-  let m: RegExpExecArray | null;
+  return parseNonTableSectionContent(text);
+}
 
-  while ((m = tokenRegex.exec(text)) !== null) {
-    if (m.index > lastIdx) {
-      const slice = text.slice(lastIdx, m.index);
-      if (slice.trim()) {
-        tokens.push({ type: "text", value: slice });
+/**
+ * Parses non-table content into entries, bullet lists, or lines
+ */
+function parseNonTableSectionContent(text: string): ParsedItem[] {
+  const items: ParsedItem[] = [];
+
+  // Check if outer text is wrapped in \begin{itemize}[...] where each \item has a nested \begin{itemize} (Jake's resume pattern)
+  const outerItemizeMatch = text.match(
+    /^\s*\\begin\{itemize\}(?:\[(?:[^\[\]]*|\{[^}]*\})*\])?([\s\S]*)\\end\{itemize\}\s*$/
+  );
+
+  if (outerItemizeMatch) {
+    const innerContent = outerItemizeMatch[1];
+    // Does innerContent contain a nested \begin{itemize}?
+    if (innerContent.includes("\\begin{itemize}")) {
+      const topLevelEntries = splitOuterItemize(innerContent);
+      for (const entry of topLevelEntries) {
+        items.push(entry);
       }
+      return items;
     }
-    const val = m[1];
-    if (val.startsWith("\\begin{itemize}")) {
-      tokens.push({ type: "begin" });
-    } else if (val === "\\end{itemize}") {
-      tokens.push({ type: "end" });
-    } else if (val === "\\item") {
-      tokens.push({ type: "item" });
-    }
-    lastIdx = m.index + m[0].length;
-  }
-  if (lastIdx < text.length) {
-    const rest = text.slice(lastIdx);
-    if (rest.trim()) {
-      tokens.push({ type: "text", value: rest });
-    }
-  }
 
-  let depth = 0;
-  let currentEntry: ParsedEntry | null = null;
+    // Outer itemize without nested itemize (e.g. Education or Skills in Jake's resume)
+    const rawItems = innerContent
+      .split(/\\item\b/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
 
-  for (let i = 0; i < tokens.length; i++) {
-    const tok = tokens[i];
-    if (tok.type === "begin") {
-      depth++;
-    } else if (tok.type === "end") {
-      depth = Math.max(0, depth - 1);
-    } else if (tok.type === "item") {
-      // Gather text until next control token
-      let itemText = "";
-      while (i + 1 < tokens.length && tokens[i + 1].type === "text") {
-        itemText += tokens[i + 1].value;
-        i++;
-      }
-      itemText = itemText.trim();
+    for (const rawItem of rawItems) {
+      const cleanItem = rawItem
+        .replace(/^\\small\{/g, "")
+        .replace(/\}[ \t]*$/g, "")
+        .trim();
 
-      if (depth <= 1) {
-        // Top-level entry (Job, Degree, or Skill group)
-        const rawLines = itemText
-          .split(/\\\\(?:\s*\[[^\]]*\])?/)
-          .map((l) => l.trim())
-          .filter((l) => l.length > 0);
+      const lines = cleanItem
+        .split(/\\\\(?:\s*\[[^\]]*\])?/)
+        .map((l) => cleanLayoutSpaces(l))
+        .filter((l) => l.length > 0 && l !== "}" && l !== "}}");
 
-        if (rawLines.length > 1) {
-          if (rawLines[0].includes("\\hfill")) {
-            const line1Parts = rawLines[0].split("\\hfill");
-            const left = line1Parts[0].trim();
-            const right = line1Parts.slice(1).join(" ").trim();
-
-            let subtitle: string | undefined = undefined;
-            let subRight: string | undefined = undefined;
-            if (rawLines[1].includes("\\hfill")) {
-              const line2Parts = rawLines[1].split("\\hfill");
-              subtitle = line2Parts[0].trim();
-              subRight = line2Parts.slice(1).join(" ").trim();
-            } else {
-              subtitle = rawLines[1].trim();
-            }
-
-            const extraBullets = rawLines.slice(2);
-
-            currentEntry = {
-              type: "entry",
-              left,
-              right,
-              subtitle: subtitle || undefined,
-              subRight: subRight || undefined,
-              bullets: extraBullets,
-            };
-            entries.push(currentEntry);
-          } else {
-            // Like in Skills: each line is an independent skill row
-            for (const line of rawLines) {
-              const cleanLine = line
-                .replace(/^\\small\{|^\\item\{|^\\item\s*/g, "")
-                .replace(/\}$/g, "")
-                .trim();
-              if (!cleanLine || cleanLine === "}" || cleanLine === "}}") continue;
-              let left = cleanLine;
-              let right = "";
-              if (cleanLine.includes("\\hfill")) {
-                const parts = cleanLine.split("\\hfill");
-                left = parts[0].trim();
-                right = parts.slice(1).join(" ").trim();
-              }
-              currentEntry = {
-                type: "line",
-                left,
-                right,
-                bullets: [],
-              };
-              entries.push(currentEntry);
-            }
-          }
-        } else {
-          // Single line entry
-          let left = itemText;
+      if (lines.length > 1) {
+        if (lines[0].includes("\\hfill")) {
+          // Entry
+          let left = lines[0];
           let right = "";
-          if (itemText.includes("\\hfill")) {
-            const parts = itemText.split("\\hfill");
-            left = parts[0].trim();
-            right = parts.slice(1).join(" ").trim();
+          const parts = lines[0].split("\\hfill");
+          left = parts[0].trim();
+          right = parts.slice(1).join(" ").trim();
+
+          let subtitle = lines[1].trim();
+          let subRight: string | undefined = undefined;
+          if (lines[1].includes("\\hfill")) {
+            const p2 = lines[1].split("\\hfill");
+            subtitle = p2[0].trim();
+            subRight = p2.slice(1).join(" ").trim();
           }
 
-          currentEntry = {
+          items.push({
             type: "entry",
             left,
-            right,
-            bullets: [],
-          };
-          entries.push(currentEntry);
+            right: right || undefined,
+            subtitle: subtitle || undefined,
+            subRight: subRight || undefined,
+            bullets: lines.slice(2),
+          });
+        } else {
+          // Multiple lines like in Skills
+          for (const line of lines) {
+            let left = line;
+            let right = "";
+            if (line.includes("\\hfill")) {
+              const p = line.split("\\hfill");
+              left = p[0].trim();
+              right = p.slice(1).join(" ").trim();
+            }
+            items.push({
+              type: "line",
+              left,
+              right: right || undefined,
+            });
+          }
         }
-      } else {
-        // Sub-bullet under current entry
-        if (!currentEntry) {
-          currentEntry = { type: "entry", left: "", right: "", bullets: [] };
-          entries.push(currentEntry);
-        }
-        if (itemText) {
-          const subLines = itemText
-            .split(/\\\\(?:\s*\[[^\]]*\])?/)
-            .map((s) => s.trim())
-            .filter((s) => s.length > 0);
-          currentEntry.bullets.push(...subLines);
-        }
-      }
-    } else if (tok.type === "text" && tok.value) {
-      const val = tok.value.trim();
-      if (!val) continue;
-
-      // Handle lines split by \\
-      const lines = val.split(/\\\\/).map((l) => l.trim()).filter((l) => l.length > 0);
-      for (const line of lines) {
-        const cleanLine = line
-          .replace(/^\\small\{|^\\item\{|^\\item\s*/g, "")
-          .replace(/\}$/g, "")
-          .trim();
-        if (!cleanLine || cleanLine === "}" || cleanLine === "}}") continue;
-
-        let left = cleanLine;
+      } else if (lines.length === 1) {
+        let left = lines[0];
         let right = "";
-        if (cleanLine.includes("\\hfill")) {
-          const parts = cleanLine.split("\\hfill");
+        if (lines[0].includes("\\hfill")) {
+          const p = lines[0].split("\\hfill");
+          left = p[0].trim();
+          right = p.slice(1).join(" ").trim();
+        }
+        items.push({
+          type: "line",
+          left,
+          right: right || undefined,
+        });
+      }
+    }
+    return items;
+  }
+
+  // Flat pattern (User's resume pattern)
+  // Segment by \begin{itemize} ... \end{itemize}
+  const itemizeRegex = /\\begin\{itemize\}(?:\[(?:[^\[\]]*|\{[^}]*\})*\])?([\s\S]*?)\\end\{itemize\}/g;
+  let match: RegExpExecArray | null;
+  let lastIndex = 0;
+
+  while ((match = itemizeRegex.exec(text)) !== null) {
+    const preText = cleanLayoutSpaces(text.slice(lastIndex, match.index));
+    const itemizeBody = match[1];
+
+    const rawBullets = itemizeBody
+      .split(/\\item\b/)
+      .map((it) => it.trim())
+      .filter((it) => it.length > 0);
+
+    if (preText) {
+      const lines = preText
+        .split(/\\\\(?:\s*\[[^\]]*\])?/)
+        .map((l) => cleanLayoutSpaces(l))
+        .filter((l) => l.length > 0);
+
+      if (lines.length >= 1) {
+        let left = lines[0];
+        let right = "";
+        if (lines[0].includes("\\hfill")) {
+          const parts = lines[0].split("\\hfill");
           left = parts[0].trim();
           right = parts.slice(1).join(" ").trim();
         }
 
-        if (currentEntry && !currentEntry.left && currentEntry.bullets.length === 0) {
-          currentEntry.left = left;
-          currentEntry.right = right;
-        } else {
-          entries.push({
-            type: "line",
-            left,
-            right,
-            bullets: [],
-          });
+        let subtitle: string | undefined = undefined;
+        let subRight: string | undefined = undefined;
+        if (lines.length >= 2) {
+          if (lines[1].includes("\\hfill")) {
+            const parts = lines[1].split("\\hfill");
+            subtitle = parts[0].trim();
+            subRight = parts.slice(1).join(" ").trim();
+          } else {
+            subtitle = lines[1].trim();
+          }
         }
+
+        items.push({
+          type: "entry",
+          left,
+          right: right || undefined,
+          subtitle: subtitle || undefined,
+          subRight: subRight || undefined,
+          bullets: rawBullets,
+        });
+      }
+    } else {
+      items.push({
+        type: "bullet_list",
+        bullets: rawBullets,
+      });
+    }
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < text.length) {
+    const trailingText = cleanLayoutSpaces(text.slice(lastIndex));
+    if (trailingText) {
+      const lines = trailingText
+        .split(/\\\\(?:\s*\[[^\]]*\])?/)
+        .map((l) => cleanLayoutSpaces(l))
+        .filter((l) => l.length > 0);
+
+      for (const line of lines) {
+        let left = line;
+        let right = "";
+        if (line.includes("\\hfill")) {
+          const parts = line.split("\\hfill");
+          left = parts[0].trim();
+          right = parts.slice(1).join(" ").trim();
+        }
+        items.push({
+          type: "line",
+          left,
+          right: right || undefined,
+        });
       }
     }
   }
 
-  // Filter out any purely empty entries
-  return entries.filter((e) => {
-    const hasLeft = cleanLatexText(e.left).length > 0;
-    const hasBullets = e.bullets.length > 0;
-    return hasLeft || hasBullets;
-  });
+  return items;
+}
+
+/**
+ * Finds each \item at outer level in a nested itemize, capturing its header and inner \begin{itemize} bullets
+ */
+function splitOuterItemize(innerContent: string): ParsedItem[] {
+  const items: ParsedItem[] = [];
+  const tokenRegex = /(\\begin\{itemize\}(?:\[(?:[^\[\]]*|\{[^}]*\})*\])?|\\end\{itemize\}|\\item\b)/g;
+  let depth = 0;
+  let currentItemText = "";
+  let lastIdx = 0;
+  let m: RegExpExecArray | null;
+
+  const entriesRaw: { header: string; bullets: string[] }[] = [];
+  let currentEntryHeader = "";
+  let currentEntryBullets: string[] = [];
+
+  while ((m = tokenRegex.exec(innerContent)) !== null) {
+    const preceding = innerContent.slice(lastIdx, m.index);
+    if (depth === 0) {
+      currentEntryHeader += preceding;
+    } else {
+      currentItemText += preceding;
+    }
+
+    const tok = m[1];
+    if (tok.startsWith("\\begin{itemize}")) {
+      depth++;
+      if (depth > 1) currentItemText += tok;
+    } else if (tok === "\\end{itemize}") {
+      depth--;
+      if (depth === 0) {
+        // End of inner itemize
+        const bullets = currentItemText
+          .split(/\\item\b/)
+          .map((b) => b.trim())
+          .filter((b) => b.length > 0);
+        currentEntryBullets = bullets;
+        currentItemText = "";
+      } else {
+        currentItemText += tok;
+      }
+    } else if (tok === "\\item") {
+      if (depth === 0) {
+        // New top-level entry starts
+        if (currentEntryHeader.trim() || currentEntryBullets.length > 0) {
+          entriesRaw.push({ header: currentEntryHeader.trim(), bullets: currentEntryBullets });
+          currentEntryHeader = "";
+          currentEntryBullets = [];
+        }
+      } else {
+        currentItemText += tok;
+      }
+    }
+    lastIdx = m.index + m[0].length;
+  }
+
+  const trailing = innerContent.slice(lastIdx);
+  if (depth === 0) {
+    currentEntryHeader += trailing;
+  }
+  if (currentEntryHeader.trim() || currentEntryBullets.length > 0) {
+    entriesRaw.push({ header: currentEntryHeader.trim(), bullets: currentEntryBullets });
+  }
+
+  for (const raw of entriesRaw) {
+    const lines = cleanLayoutSpaces(raw.header)
+      .split(/\\\\(?:\s*\[[^\]]*\])?/)
+      .map((l) => cleanLayoutSpaces(l))
+      .filter((l) => l.length > 0);
+
+    if (lines.length === 0 && raw.bullets.length > 0) {
+      items.push({ type: "bullet_list", bullets: raw.bullets });
+      continue;
+    }
+
+    let left = lines[0] || "";
+    let right = "";
+    if (lines[0] && lines[0].includes("\\hfill")) {
+      const parts = lines[0].split("\\hfill");
+      left = parts[0].trim();
+      right = parts.slice(1).join(" ").trim();
+    }
+
+    let subtitle: string | undefined = undefined;
+    let subRight: string | undefined = undefined;
+    if (lines.length >= 2) {
+      if (lines[1].includes("\\hfill")) {
+        const parts = lines[1].split("\\hfill");
+        subtitle = parts[0].trim();
+        subRight = parts.slice(1).join(" ").trim();
+      } else {
+        subtitle = lines[1].trim();
+      }
+    }
+
+    items.push({
+      type: "entry",
+      left,
+      right: right || undefined,
+      subtitle: subtitle || undefined,
+      subRight: subRight || undefined,
+      bullets: raw.bullets,
+    });
+  }
+
+  return items;
 }
 
 /**
@@ -731,7 +986,7 @@ function parseLatexResume(latex: string) {
   if (centerMatch) {
     const lines = centerMatch[1]
       .split(/\\\\(?:\s*\[[^\]]*\])?/)
-      .map((l) => l.replace(/\\vspace\{[^}]*\}/g, "").replace(/^\s*\[[^\]]*\]\s*/, "").trim())
+      .map((l) => cleanLayoutSpaces(l))
       .filter((l) => l.length > 0);
 
     // If first line has the name, the remaining lines are contact info
@@ -745,7 +1000,7 @@ function parseLatexResume(latex: string) {
     const preSectionText = body.split(/\\(?:section|subsection)\*?\{/)[0];
     const candidateLines = preSectionText
       .split(/\\\\|\n/)
-      .map((l) => l.trim())
+      .map((l) => cleanLayoutSpaces(l))
       .filter((l) => l.length > 0 && (l.includes("@") || l.includes("href") || l.includes("http") || /\d{3}/.test(l)));
     if (candidateLines.length > 0) {
       contactLines = candidateLines;
@@ -753,7 +1008,6 @@ function parseLatexResume(latex: string) {
   }
 
   // 4. Extract Sections
-  // Matches \section{...}, \section*{...}, \begin{rSection}{...}, \subsection{...}, \cvsection{...}
   const sectionSplitRegex = /(?:\\(?:section|subsection)\*?\{([^}]+)\}|\\begin\{rSection\}\{([^}]+)\})/g;
 
   const sections: ParsedSection[] = [];
@@ -769,7 +1023,7 @@ function parseLatexResume(latex: string) {
       const content = body.slice(lastIndex, match.index).trim();
       sections.push({
         title: lastTitle,
-        entries: parseSectionContent(content),
+        items: parseSectionContent(content),
       });
     }
 
@@ -784,17 +1038,17 @@ function parseLatexResume(latex: string) {
       .trim();
     sections.push({
       title: lastTitle,
-      entries: parseSectionContent(content),
+      items: parseSectionContent(content),
     });
   }
 
-  // Fallback: If no \section tags were found in the document, treat the body as a single structured section
+  // Fallback: If no \section tags were found in the document, treat body as a single structured section
   if (sections.length === 0 && body.trim()) {
     const cleanBody = body.replace(/\\begin\{center\}[\s\S]*?\\end\{center\}/, "").trim();
     if (cleanBody) {
       sections.push({
         title: "Resume Details",
-        entries: parseSectionContent(cleanBody),
+        items: parseSectionContent(cleanBody),
       });
     }
   }
@@ -869,43 +1123,141 @@ export const LatexPreview = forwardRef<HTMLDivElement, LatexPreviewProps>(
                   </h2>
                 </div>
 
-                {/* Section Content Entries */}
+                {/* Section Content Items */}
                 <div className="space-y-2">
-                  {section.entries.map((entry, eIdx) => {
-                    const hasRight = Boolean(entry.right && entry.right.trim().length > 0);
+                  {section.items.map((item, itemIdx) => {
+                    // 1. Table Item (tabular, tabularx, tabular*)
+                    if (item.type === "table") {
+                      return (
+                        <div key={itemIdx} className="w-full my-1 overflow-x-auto">
+                          <table className="w-full text-[11px] text-gray-900 border-collapse">
+                            {item.rows.length > 0 && (
+                              <tbody>
+                                {item.rows.map((row, rIdx) => {
+                                  const isHeader =
+                                    rIdx === 0 &&
+                                    row.some(
+                                      (cell) =>
+                                        cell.includes("\\textbf") ||
+                                        cell.includes("\\bf") ||
+                                        cell.toLowerCase().includes("year") ||
+                                        cell.toLowerCase().includes("degree") ||
+                                        cell.toLowerCase().includes("role")
+                                    );
+                                  const CellTag = isHeader ? "th" : "td";
+
+                                  return (
+                                    <tr
+                                      key={rIdx}
+                                      className={`${
+                                        isHeader
+                                          ? "border-b border-gray-400 font-bold text-gray-950"
+                                          : "border-b border-gray-100 last:border-b-0"
+                                      }`}
+                                    >
+                                      {row.map((cell, cIdx) => {
+                                        const align =
+                                          item.alignments && item.alignments[cIdx]
+                                            ? item.alignments[cIdx]
+                                            : "left";
+                                        const alignClass =
+                                          align === "right"
+                                            ? "text-right"
+                                            : align === "center"
+                                            ? "text-center"
+                                            : "text-left";
+
+                                        return (
+                                          <CellTag
+                                            key={cIdx}
+                                            className={`py-1 px-1.5 leading-snug ${alignClass} ${
+                                              isHeader ? "font-bold text-gray-950 pb-1" : "text-gray-800"
+                                            }`}
+                                          >
+                                            {renderInlineLatex(cell)}
+                                          </CellTag>
+                                        );
+                                      })}
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            )}
+                          </table>
+                        </div>
+                      );
+                    }
+
+                    // 2. Direct Bullet List Item (e.g. Achievements, Coursework)
+                    if (item.type === "bullet_list") {
+                      return (
+                        <ul
+                          key={itemIdx}
+                          className="list-disc ml-4 space-y-0.5 text-[11px] text-gray-800 leading-relaxed"
+                        >
+                          {item.bullets.map((bullet, bIdx) => (
+                            <li key={bIdx} className="pl-0.5">
+                              {renderInlineLatex(bullet)}
+                            </li>
+                          ))}
+                        </ul>
+                      );
+                    }
+
+                    // 3. Line Item (e.g. Skills row or standalone text)
+                    if (item.type === "line") {
+                      return item.right ? (
+                        <div
+                          key={itemIdx}
+                          className="flex justify-between items-baseline text-xs text-gray-900 gap-2"
+                        >
+                          <div className="flex-1 min-w-0">{renderInlineLatex(item.left)}</div>
+                          <div className="text-right text-[11px] font-normal text-gray-600 whitespace-nowrap flex-shrink-0">
+                            {renderInlineLatex(item.right)}
+                          </div>
+                        </div>
+                      ) : (
+                        <div key={itemIdx} className="text-xs text-gray-900 leading-snug">
+                          {renderInlineLatex(item.left)}
+                        </div>
+                      );
+                    }
+
+                    // 4. Entry Item (Title, Right, Subtitle, SubRight, Bullets)
+                    const hasRight = Boolean(item.right && item.right.trim().length > 0);
 
                     return (
-                      <div key={eIdx} className="flex flex-col">
+                      <div key={itemIdx} className="flex flex-col">
                         {/* Entry Header: Left (Title/Role) and Right (Dates/Location) */}
                         {hasRight ? (
                           <div className="flex justify-between items-baseline text-xs text-gray-950 gap-2">
-                            <div className="font-semibold flex-1 min-w-0">{renderInlineLatex(entry.left)}</div>
+                            <div className="font-semibold flex-1 min-w-0">{renderInlineLatex(item.left)}</div>
                             <div className="text-right text-[11px] font-normal text-gray-600 whitespace-nowrap flex-shrink-0 font-mono">
-                              {renderInlineLatex(entry.right)}
+                              {renderInlineLatex(item.right!)}
                             </div>
                           </div>
                         ) : (
-                          <div className="text-xs text-gray-900 leading-snug">
-                            {renderInlineLatex(entry.left)}
+                          <div className="text-xs text-gray-950 font-semibold leading-snug">
+                            {renderInlineLatex(item.left)}
                           </div>
                         )}
 
                         {/* Optional Subtitle Row */}
-                        {entry.subtitle && (
+                        {item.subtitle && (
                           <div className="flex justify-between items-baseline text-[11px] text-gray-700 italic">
-                            <div>{renderInlineLatex(entry.subtitle)}</div>
-                            {entry.subRight && (
+                            <div>{renderInlineLatex(item.subtitle)}</div>
+                            {item.subRight && (
                               <div className="text-right text-[10px] text-gray-500">
-                                {renderInlineLatex(entry.subRight)}
+                                {renderInlineLatex(item.subRight)}
                               </div>
                             )}
                           </div>
                         )}
 
                         {/* Sub-Bullets List */}
-                        {entry.bullets && entry.bullets.length > 0 && (
+                        {item.bullets && item.bullets.length > 0 && (
                           <ul className="list-disc ml-4 mt-1 space-y-0.5 text-[11px] text-gray-800 leading-relaxed">
-                            {entry.bullets.map((bullet, bIdx) => (
+                            {item.bullets.map((bullet, bIdx) => (
                               <li key={bIdx} className="pl-0.5">
                                 {renderInlineLatex(bullet)}
                               </li>
