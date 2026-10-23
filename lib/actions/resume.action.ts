@@ -270,35 +270,18 @@ Evaluate objectively and deterministically without randomness so that the same i
       `,
     });
 
-    // Enforce 100% deterministic mathematical precision across repeated runs
-    const matchScore = Math.min(100, Math.max(0, Math.round(object.overallMatchScore)));
-    const atsScaled = Math.min(10, Math.max(0, Math.round(object.atsScore))) * 10;
-    const impactScaled = Math.min(10, Math.max(0, Math.round(object.quantifiableImpactScore))) * 10;
-    const verbScaled = Math.min(10, Math.max(0, Math.round(object.actionVerbScore))) * 10;
+    // Enforce deterministic scoring using configurable weights (Open/Closed Principle)
+    const { calculateShortlistProbability, determineVerdict } = await import("@/lib/utils/scoring");
 
-    const deterministicShortlist = Math.min(
-      100,
-      Math.max(
-        0,
-        Math.round(
-          matchScore * 0.40 +
-          atsScaled * 0.20 +
-          impactScaled * 0.25 +
-          verbScaled * 0.15
-        )
-      )
-    );
+    const deterministicShortlist = calculateShortlistProbability({
+      overallMatchScore: object.overallMatchScore,
+      atsScore: object.atsScore,
+      quantifiableImpactScore: object.quantifiableImpactScore,
+      actionVerbScore: object.actionVerbScore,
+    });
 
     object.shortlistProbability = deterministicShortlist;
-    if (deterministicShortlist >= 75) {
-      object.verdict = "Strong Match";
-    } else if (deterministicShortlist >= 50) {
-      object.verdict = "Moderate Match";
-    } else if (deterministicShortlist >= 30) {
-      object.verdict = "Needs Optimization";
-    } else {
-      object.verdict = "High Risk of Rejection";
-    }
+    object.verdict = determineVerdict(deterministicShortlist);
 
     // LaTeX is generated on-demand when the user opens LaTeX Studio (faster analysis)
     const finalAnalysis: DetailedResumeAnalysis = {
@@ -311,11 +294,12 @@ Evaluate objectively and deterministically without randomness so that the same i
       analysis: finalAnalysis,
       extractedResumeText: resumeText,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error analyzing resume with JD:", error);
+    const message = error instanceof Error ? error.message : "Failed to analyze resume against the job description. Please check your inputs.";
     return {
       success: false,
-      error: error.message || "Failed to analyze resume against the job description. Please check your inputs.",
+      error: message,
     };
   }
 }
@@ -390,11 +374,12 @@ CRITICAL FORMATTING REQUIREMENTS:
     }
 
     return { success: true, latex: cleanLatex.trim() };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error generating custom LaTeX:", error);
+    const message = error instanceof Error ? error.message : "Failed to generate customized LaTeX resume.";
     return {
       success: false,
-      error: error.message || "Failed to generate customized LaTeX resume.",
+      error: message,
     };
   }
 }
@@ -426,11 +411,12 @@ export async function convertResumeToLatexAction(formData: FormData): Promise<{
       jobDescription,
       instructions: `Candidate Resume Text:\n${resumeText.slice(0, 10000)}\n\nTarget Role: ${targetRole}. Convert this resume into a complete, clean, ATS-optimized 1-page LaTeX resume with candidate's actual details.`,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error converting resume to LaTeX:", error);
+    const message = error instanceof Error ? error.message : "Failed to convert resume to LaTeX format.";
     return {
       success: false,
-      error: error.message || "Failed to convert resume to LaTeX format.",
+      error: message,
     };
   }
 }

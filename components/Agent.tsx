@@ -70,7 +70,7 @@ const Agent = ({
   const audioChunksRef = useRef<Blob[]>([]);
 
   // Speech Recognition & TTS Refs
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
   const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const speechTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const activeUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
@@ -412,7 +412,7 @@ const Agent = ({
           console.log("[SpeechRecognition] started");
         };
 
-        recognition.onresult = (event: any) => {
+        recognition.onresult = (event: SpeechRecognitionEvent) => {
           // If candidate speaks while AI was talking, interrupt the AI
           if (isSpeakingRef.current) {
             if (typeof window !== "undefined" && "speechSynthesis" in window) {
@@ -451,7 +451,7 @@ const Agent = ({
           }, 5000);
         };
 
-        recognition.onerror = (event: any) => {
+        recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
           if (event.error === "no-speech" || event.error === "aborted") return;
           console.warn("[SpeechRecognition] error:", event.error);
         };
