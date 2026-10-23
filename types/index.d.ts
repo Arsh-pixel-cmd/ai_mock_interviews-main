@@ -1,3 +1,14 @@
+interface QuestionReview {
+  questionNumber: number;
+  question: string;
+  candidateAnswer: string;
+  score: number;
+  feedback: string;
+  whatWasGood: string;
+  whatWasMissing: string;
+  idealAnswer: string;
+}
+
 interface Feedback {
   id: string;
   interviewId: string;
@@ -11,6 +22,7 @@ interface Feedback {
   strengths: string[];
   areasForImprovement: string[];
   finalAssessment: string;
+  questionReviews?: QuestionReview[];
   createdAt: string;
 }
 

@@ -155,6 +155,17 @@ End the conversation on a polite and positive note.
   },
 };
 
+export const questionReviewSchema = z.object({
+  questionNumber: z.number(),
+  question: z.string(),
+  candidateAnswer: z.string().describe("What the candidate actually answered (or 'No answer provided' if skipped)"),
+  score: z.number().describe("Score from 0 to 100 for this specific answer"),
+  feedback: z.string().describe("Detailed critique of the candidate's answer"),
+  whatWasGood: z.string().describe("Key points the candidate answered well"),
+  whatWasMissing: z.string().describe("Crucial gaps, inaccuracies, or missing edge cases"),
+  idealAnswer: z.string().describe("The comprehensive, correct model answer showing how a senior candidate should answer"),
+});
+
 export const feedbackSchema = z.object({
   totalScore: z.number(),
   categoryScores: z.tuple([
@@ -187,6 +198,7 @@ export const feedbackSchema = z.object({
   strengths: z.array(z.string()),
   areasForImprovement: z.array(z.string()),
   finalAssessment: z.string(),
+  questionReviews: z.array(questionReviewSchema),
 });
 
 export const interviewCovers = [

@@ -103,6 +103,110 @@ const FeedbackContent = ({ feedback, interview }: FeedbackContentProps) => {
               </ul>
             </div>
           </div>
+
+          {/* Question-by-Question Detailed Review & Model Answers */}
+          {feedback?.questionReviews && feedback.questionReviews.length > 0 && (
+            <div className="flex flex-col gap-6 pt-6 border-t border-gray-700 print:border-gray-300">
+              <div className="flex flex-col gap-1">
+                <span className="text-xs uppercase tracking-wider font-bold text-primary-200 print:text-black">
+                  Detailed Answer Review • Candidate vs Model Answer
+                </span>
+                <h2 className="text-2xl sm:text-3xl font-bold text-white print:text-black">
+                  Question-by-Question Breakdown
+                </h2>
+                <p className="text-sm text-light-400 print:text-gray-600">
+                  Compare the exact answers you gave during the mock interview against industry-standard senior model answers.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-6">
+                {feedback.questionReviews.map((review, idx) => {
+                  const scoreColor =
+                    review.score >= 80
+                      ? "text-success-100 border-success-100/30 bg-success-100/10"
+                      : review.score >= 60
+                      ? "text-primary-200 border-primary-200/30 bg-primary-200/10"
+                      : "text-destructive-100 border-destructive-100/30 bg-destructive-100/10";
+
+                  return (
+                    <div
+                      key={idx}
+                      className="p-6 rounded-2xl bg-dark-200/90 border border-white/10 print:bg-white print:border-gray-300 flex flex-col gap-5 shadow-lg"
+                    >
+                      {/* Question Header & Score */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-white/10 print:border-gray-200">
+                        <div className="flex items-start gap-3">
+                          <span className="size-7 rounded-lg bg-primary-200/20 text-primary-200 font-bold flex items-center justify-center text-xs shrink-0 mt-0.5 print:bg-gray-200 print:text-black">
+                            Q{review.questionNumber || idx + 1}
+                          </span>
+                          <h3 className="!text-lg font-bold text-white print:text-black leading-snug">
+                            {review.question}
+                          </h3>
+                        </div>
+
+                        <span
+                          className={`px-3 py-1 rounded-full text-xs font-bold border w-fit shrink-0 ${scoreColor}`}
+                        >
+                          Score: {review.score}/100
+                        </span>
+                      </div>
+
+                      {/* Candidate's Spoken Answer */}
+                      <div className="flex flex-col gap-1.5 p-4 rounded-xl bg-dark-300/80 border border-white/5 print:bg-gray-50 print:border-gray-200">
+                        <div className="flex items-center gap-2 text-xs font-semibold text-light-400 print:text-gray-600">
+                          <span>Your Answer During The Interview</span>
+                        </div>
+                        <p className="text-sm text-white print:text-black italic leading-relaxed">
+                          "{review.candidateAnswer || "No verbal response recorded for this question."}"
+                        </p>
+                      </div>
+
+                      {/* Critique Two-Column Grid */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* What was good */}
+                        <div className="flex flex-col gap-1.5 p-3.5 rounded-xl bg-success-100/5 border border-success-100/20 print:border-green-300">
+                          <span className="text-xs font-bold text-success-100 print:text-green-700 flex items-center gap-1.5">
+                            ✓ What You Did Well
+                          </span>
+                          <p className="text-xs text-light-100 print:text-black leading-relaxed">
+                            {review.whatWasGood || "Addressed the basic premise of the question."}
+                          </p>
+                        </div>
+
+                        {/* What was missing */}
+                        <div className="flex flex-col gap-1.5 p-3.5 rounded-xl bg-destructive-100/5 border border-destructive-100/20 print:border-red-300">
+                          <span className="text-xs font-bold text-destructive-100 print:text-red-700 flex items-center gap-1.5">
+                            ✗ Gaps & What Was Missing
+                          </span>
+                          <p className="text-xs text-light-100 print:text-black leading-relaxed">
+                            {review.whatWasMissing || "Could provide deeper architectural context and concrete trade-offs."}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Correct Ideal Model Answer */}
+                      <div className="flex flex-col gap-2 p-4 rounded-xl bg-primary-200/5 border border-primary-200/30 print:bg-gray-50 print:border-gray-300">
+                        <div className="flex items-center gap-2 text-xs font-bold text-primary-200 print:text-black">
+                          <span>★ Correct Senior-Level Model Answer</span>
+                        </div>
+                        <p className="text-xs sm:text-sm text-light-100 print:text-black leading-relaxed">
+                          {review.idealAnswer}
+                        </p>
+                      </div>
+
+                      {/* Evaluator Notes */}
+                      {review.feedback && (
+                        <div className="text-xs text-light-400 print:text-gray-600 pt-1">
+                          <span className="font-semibold text-light-300 print:text-black">Evaluator Note: </span>
+                          {review.feedback}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

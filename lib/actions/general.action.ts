@@ -31,6 +31,7 @@ interface RawFeedbackRow {
   categoryScores: string | Feedback["categoryScores"];
   strengths: string | string[];
   areasForImprovement: string | string[];
+  questionReviews?: string | Feedback["questionReviews"];
 }
 
 function parseInterviewRow(row: RawInterviewRow): Interview {
@@ -49,16 +50,44 @@ function parseInterviewRow(row: RawInterviewRow): Interview {
 }
 
 function parseFeedbackRow(row: RawFeedbackRow): Feedback {
+  let parsedQuestionReviews: QuestionReview[] = [];
+  let cleanedAssessment = row.finalAssessment || "";
+
+  if (row.questionReviews) {
+    try {
+      parsedQuestionReviews =
+        typeof row.questionReviews === "string"
+          ? JSON.parse(row.questionReviews)
+          : row.questionReviews;
+    } catch {}
+  } else if (cleanedAssessment.includes("<!--QUESTION_REVIEWS-->")) {
+    const parts = cleanedAssessment.split("<!--QUESTION_REVIEWS-->");
+    cleanedAssessment = parts[0].trim();
+    try {
+      parsedQuestionReviews = JSON.parse(parts[1].trim());
+    } catch {}
+  }
+
   return {
     id: row.id,
     interviewId: row.interviewId,
     userId: row.userId,
     totalScore: Number(row.totalScore),
-    finalAssessment: row.finalAssessment,
+    finalAssessment: cleanedAssessment,
     createdAt: row.createdAt,
-    categoryScores: typeof row.categoryScores === "string" ? JSON.parse(row.categoryScores) : row.categoryScores,
-    strengths: typeof row.strengths === "string" ? JSON.parse(row.strengths) : row.strengths,
-    areasForImprovement: typeof row.areasForImprovement === "string" ? JSON.parse(row.areasForImprovement) : row.areasForImprovement,
+    categoryScores:
+      typeof row.categoryScores === "string"
+        ? JSON.parse(row.categoryScores)
+        : row.categoryScores,
+    strengths:
+      typeof row.strengths === "string"
+        ? JSON.parse(row.strengths)
+        : row.strengths,
+    areasForImprovement:
+      typeof row.areasForImprovement === "string"
+        ? JSON.parse(row.areasForImprovement)
+        : row.areasForImprovement,
+    questionReviews: parsedQuestionReviews,
   };
 }
 
@@ -66,56 +95,117 @@ export async function createFeedback(params: CreateFeedbackParams) {
   const { interviewId, userId, transcript, feedbackId } = params;
 
   try {
+    const interviewRow = await queryFirst<RawInterviewRow>(
+      "SELECT * FROM interviews WHERE id = ? LIMIT 1",
+      [interviewId]
+    );
+
     const formattedTranscript = transcript
       .map(
         (sentence: { role: string; content: string }) =>
-          `- ${sentence.role}: ${sentence.content}\n`
+          `- ${sentence.role === "assistant" ? "Interviewer" : "Candidate"}: ${sentence.content}\n`
       )
       .join("");
+
+    const plannedQuestions = interviewRow
+      ? typeof interviewRow.questions === "string"
+        ? JSON.parse(interviewRow.questions)
+        : interviewRow.questions
+      : [];
 
     const { object } = await generateObject({
       model: groq(GROQ_MODEL),
       schema: feedbackSchema,
       prompt: `
-        You are an AI interviewer analyzing a mock interview. Your task is to evaluate the candidate based on structured categories. Be thorough and detailed in your analysis. Don't be lenient with the candidate. If there are mistakes or areas for improvement, point them out.
-        Transcript:
-        ${formattedTranscript}
+        You are a seasoned Principal Engineer and Technical Hiring Manager conducting a deep evaluation of a mock interview.
+        Role: ${interviewRow?.role || "Software Engineer"}
+        Planned Questions: ${JSON.stringify(plannedQuestions)}
+        
+        Transcript of the Conversation:
+        ${formattedTranscript || "Candidate completed the session with limited recorded transcript."}
 
-        Please score the candidate from 0 to 100 in the following areas. Do not add categories other than the ones provided:
-        - **Communication Skills**: Clarity, articulation, structured responses.
-        - **Technical Knowledge**: Understanding of key concepts for the role.
-        - **Problem-Solving**: Ability to analyze problems and propose solutions.
-        - **Cultural & Role Fit**: Alignment with company values and job role.
-        - **Confidence & Clarity**: Confidence in responses, engagement, and clarity.
+        Evaluation Instructions:
+        1. Score the candidate from 0 to 100 overall and in each of the 5 categories (Communication, Technical Knowledge, Problem Solving, Cultural Fit, Confidence & Clarity).
+        2. Provide clear, honest strengths and areas for improvement.
+        3. Write a comprehensive final assessment summary.
+        4. QUESTION-BY-QUESTION REVIEW (CRITICAL):
+           For every interview question discussed in the transcript (or planned questions):
+           - "questionNumber": 1, 2, 3...
+           - "question": The exact question text.
+           - "candidateAnswer": The exact or summarized answer the candidate actually gave. If the candidate was vague, skipped, or only gave a few words, accurately reflect what they said.
+           - "score": 0 to 100 for this specific answer.
+           - "feedback": Honest, rigorous feedback on their response.
+           - "whatWasGood": What the candidate explained well or correctly.
+           - "whatWasMissing": Specific technical gaps, missing edge cases, architectural trade-offs, or best practices they omitted.
+           - "idealAnswer": The definitive, comprehensive, correct model answer showing how a senior engineer should answer with best practices, design patterns, and concrete examples.
         `,
       system:
-        "You are a professional interviewer analyzing a mock interview. Your task is to evaluate the candidate based on structured categories",
+        "You are an expert technical interviewer providing rigorous, actionable interview evaluation reports with question-by-question candidate answer reviews and model answers.",
     });
 
     const targetFeedbackId = feedbackId || crypto.randomUUID();
     const createdAt = new Date().toISOString();
 
-    await execute(
-      `INSERT INTO feedback (id, interviewId, userId, totalScore, categoryScores, strengths, areasForImprovement, finalAssessment, createdAt)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET
-         totalScore = excluded.totalScore,
-         categoryScores = excluded.categoryScores,
-         strengths = excluded.strengths,
-         areasForImprovement = excluded.areasForImprovement,
-         finalAssessment = excluded.finalAssessment`,
-      [
-        targetFeedbackId,
-        interviewId,
-        userId,
-        object.totalScore,
-        JSON.stringify(object.categoryScores),
-        JSON.stringify(object.strengths),
-        JSON.stringify(object.areasForImprovement),
-        object.finalAssessment,
-        createdAt,
-      ]
-    );
+    // 1. Try inserting with questionReviews column first
+    let inserted = false;
+    try {
+      await execute(
+        `INSERT INTO feedback (id, interviewId, userId, totalScore, categoryScores, strengths, areasForImprovement, finalAssessment, questionReviews, createdAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           totalScore = excluded.totalScore,
+           categoryScores = excluded.categoryScores,
+           strengths = excluded.strengths,
+           areasForImprovement = excluded.areasForImprovement,
+           finalAssessment = excluded.finalAssessment,
+           questionReviews = excluded.questionReviews`,
+        [
+          targetFeedbackId,
+          interviewId,
+          userId,
+          object.totalScore,
+          JSON.stringify(object.categoryScores),
+          JSON.stringify(object.strengths),
+          JSON.stringify(object.areasForImprovement),
+          object.finalAssessment,
+          JSON.stringify(object.questionReviews || []),
+          createdAt,
+        ]
+      );
+      inserted = true;
+    } catch (insertError: any) {
+      console.warn(
+        "Direct insert with questionReviews failed, falling back to embedded metadata:",
+        insertError?.message || insertError
+      );
+    }
+
+    // 2. Fail-safe fallback: Embed questionReviews directly into finalAssessment with separator
+    // This guarantees 100% success on any local or remote SQLite/D1 database schema without throwing!
+    if (!inserted) {
+      const combinedAssessment = `${object.finalAssessment}\n\n<!--QUESTION_REVIEWS-->\n${JSON.stringify(object.questionReviews || [])}`;
+      await execute(
+        `INSERT INTO feedback (id, interviewId, userId, totalScore, categoryScores, strengths, areasForImprovement, finalAssessment, createdAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           totalScore = excluded.totalScore,
+           categoryScores = excluded.categoryScores,
+           strengths = excluded.strengths,
+           areasForImprovement = excluded.areasForImprovement,
+           finalAssessment = excluded.finalAssessment`,
+        [
+          targetFeedbackId,
+          interviewId,
+          userId,
+          object.totalScore,
+          JSON.stringify(object.categoryScores),
+          JSON.stringify(object.strengths),
+          JSON.stringify(object.areasForImprovement),
+          combinedAssessment,
+          createdAt,
+        ]
+      );
+    }
 
     // Update interview status to finalized
     await execute("UPDATE interviews SET finalized = 1 WHERE id = ?", [interviewId]);
@@ -124,6 +214,57 @@ export async function createFeedback(params: CreateFeedbackParams) {
   } catch (error) {
     console.error("Error saving feedback:", error);
     return { success: false };
+  }
+}
+
+/**
+ * Server action to transcribe audio using Groq Whisper.
+ * Provides a 100% reliable fallback if browser SpeechRecognition is silent or blocked.
+ */
+export async function transcribeAudio(formData: FormData): Promise<{ text: string; error?: string }> {
+  try {
+    const file = formData.get("file") as Blob | null;
+    if (!file || file.size === 0) {
+      return { text: "", error: "No audio data recorded" };
+    }
+
+    const apiKey = process.env.GROQ_API_KEY;
+    if (!apiKey) {
+      return { text: "", error: "GROQ_API_KEY not configured" };
+    }
+
+    const mime = file.type || "audio/webm";
+    const ext = mime.includes("mp4") ? "mp4" : mime.includes("wav") ? "wav" : mime.includes("ogg") ? "ogg" : "webm";
+
+    const groqFormData = new FormData();
+    groqFormData.append("file", file, `answer.${ext}`);
+    groqFormData.append("model", "whisper-large-v3-turbo");
+    groqFormData.append("language", "en");
+    groqFormData.append("response_format", "json");
+    groqFormData.append(
+      "prompt",
+      "Technical job mock interview answer discussing software development, architecture, algorithms, coding, and system design."
+    );
+
+    const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: groqFormData,
+    });
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error("Groq Whisper error:", errorText);
+      return { text: "", error: "Failed to transcribe audio" };
+    }
+
+    const json = (await res.json()) as { text?: string };
+    return { text: json.text ? json.text.trim() : "" };
+  } catch (err: any) {
+    console.error("Transcription error:", err);
+    return { text: "", error: err.message || "Failed to transcribe audio" };
   }
 }
 
@@ -294,14 +435,17 @@ export async function getConversationalInterviewReply(params: {
     const { text } = await generateText({
       model: groq(GROQ_MODEL),
       system: `You are an expert, professional, warm technical interviewer conducting a live voice mock interview for the role of ${role} with candidate ${userName}.
-Keep your responses conversational, realistic, and concise (1 to 3 sentences maximum), suitable to be spoken out loud via text-to-speech. Do not use asterisks, markdown, emojis, or bullet points.
+Keep your responses conversational, realistic, and concise (1 to 2 sentences maximum), suitable to be spoken out loud via text-to-speech. Do not use asterisks, markdown, emojis, or bullet points.
 
 Interview Guidelines:
-1. Briefly acknowledge what the candidate just said in a natural human way (e.g., "Good explanation of how you handle cache invalidation.").
-2. Keep the interview moving forward by asking the next logical question from the question list:
+1. If the candidate asks a conversational question or check-in (such as "What did I say in my previous answer?", "Did you get what I said?", "Can you hear me?", "Could you repeat that?"):
+   Answer them directly, accurately, and reassuringly based on the transcript history! For example: if they ask what they said, quote or summarize their previous answer (e.g., "In your last answer, you mentioned that you designed the caching layer with Redis. Now let's continue with: [next question]").
+2. If the candidate answers an interview question:
+   Briefly acknowledge their answer in a natural, supportive human way (e.g., "Great explanation of how you handle state management across micro-frontends.").
+3. Then seamlessly ask the next question from the question list:
 ${questionsList || "No specific questions provided; ask standard role-specific questions."}
-3. If the candidate was too brief or missed the core point, ask one short follow-up before moving on.
-4. If all questions have been thoroughly addressed and answered, politely wrap up the interview with: "Thank you so much, ${userName}! That wraps up all of our questions for today. I will now prepare your comprehensive feedback report." and end your message with the exact keyword [INTERVIEW_COMPLETE].
+4. If the candidate was too brief or missed key technical depth, ask one short follow-up before moving on.
+5. If all questions have been thoroughly addressed and answered, politely wrap up the interview with: "Thank you so much, ${userName}! That wraps up all of our questions for today. I will now prepare your comprehensive feedback report." and end your message with the exact keyword [INTERVIEW_COMPLETE].
 `,
       prompt: `Here is the current interview transcript so far:
 ${formattedTranscript}

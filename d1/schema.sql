@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS feedback (
   strengths TEXT NOT NULL,       -- JSON array string
   areasForImprovement TEXT NOT NULL, -- JSON array string
   finalAssessment TEXT NOT NULL,
+  questionReviews TEXT,          -- JSON array string of question-by-question candidate answer reviews & model answers
   createdAt TEXT NOT NULL
 );
 
