@@ -1,13 +1,16 @@
 "use server";
 
-import path from "path";
-import fs from "fs";
-import { pathToFileURL } from "url";
 import zlib from "zlib";
 import { generateObject, generateText } from "ai";
 import { PDFParse } from "pdf-parse";
+import DOMMatrix from "dommatrix";
 import { z } from "zod";
 import { getModel } from "@/lib/ai/ai-provider";
+
+// Polyfill DOMMatrix for pdfjs-dist in Node.js / SSR environment
+if (typeof (globalThis as any).DOMMatrix === "undefined") {
+  (globalThis as any).DOMMatrix = DOMMatrix;
+}
 
 const detailedAnalysisSchema = z.object({
   overallMatchScore: z.number().describe("Overall JD match percentage (0-100)"),
@@ -46,17 +49,11 @@ const detailedAnalysisSchema = z.object({
 });
 
 /**
- * Configure pdfjs worker location for Node.js / Next.js SSR
+ * Configure environment for pdfjs in Node.js / Next.js SSR
  */
 function ensurePdfWorker() {
-  try {
-    const workerRelativePath = "./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs";
-    const absoluteWorkerPath = path.resolve(process.cwd(), workerRelativePath);
-    if (fs.existsSync(absoluteWorkerPath)) {
-      PDFParse.setWorker(pathToFileURL(absoluteWorkerPath).href);
-    }
-  } catch {
-    // If worker configuration fails, will fallback gracefully
+  if (typeof (globalThis as any).DOMMatrix === "undefined") {
+    (globalThis as any).DOMMatrix = DOMMatrix;
   }
 }
 
