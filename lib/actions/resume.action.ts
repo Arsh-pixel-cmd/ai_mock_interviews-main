@@ -2,15 +2,157 @@
 
 import zlib from "zlib";
 import { generateObject, generateText } from "ai";
-import { PDFParse } from "pdf-parse";
-import DOMMatrix from "dommatrix";
 import { z } from "zod";
 import { getModel } from "@/lib/ai/ai-provider";
 
-// Polyfill DOMMatrix for pdfjs-dist in Node.js / SSR environment
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-this-alias, @typescript-eslint/no-unused-vars */
+/**
+ * Minimal spec-compliant DOMMatrix polyfill for pdfjs-dist in Node.js / Vercel serverless.
+ * Implements every mutable method pdfjs-dist v5 calls:
+ *   scaleSelf, translateSelf, invertSelf, multiplySelf, preMultiplySelf, getTransform
+ */
 if (typeof (globalThis as any).DOMMatrix === "undefined") {
-  (globalThis as any).DOMMatrix = DOMMatrix;
+  class DOMMatrixPolyfill {
+    // 2-D properties
+    a: number; b: number; c: number; d: number; e: number; f: number;
+    // 4×4 aliases
+    m11: number; m12: number; m13: number; m14: number;
+    m21: number; m22: number; m23: number; m24: number;
+    m31: number; m32: number; m33: number; m34: number;
+    m41: number; m42: number; m43: number; m44: number;
+
+    constructor(init?: string | number[]) {
+      // Identity
+      this.m11 = 1; this.m12 = 0; this.m13 = 0; this.m14 = 0;
+      this.m21 = 0; this.m22 = 1; this.m23 = 0; this.m24 = 0;
+      this.m31 = 0; this.m32 = 0; this.m33 = 1; this.m34 = 0;
+      this.m41 = 0; this.m42 = 0; this.m43 = 0; this.m44 = 1;
+      this.a = 1; this.b = 0; this.c = 0; this.d = 1; this.e = 0; this.f = 0;
+      if (Array.isArray(init)) {
+        if (init.length === 6) {
+          this.a = this.m11 = init[0]; this.b = this.m12 = init[1];
+          this.c = this.m21 = init[2]; this.d = this.m22 = init[3];
+          this.e = this.m41 = init[4]; this.f = this.m42 = init[5];
+        } else if (init.length === 16) {
+          [this.m11,this.m12,this.m13,this.m14,this.m21,this.m22,this.m23,this.m24,
+           this.m31,this.m32,this.m33,this.m34,this.m41,this.m42,this.m43,this.m44] = init;
+          this.a = this.m11; this.b = this.m12; this.c = this.m21; this.d = this.m22;
+          this.e = this.m41; this.f = this.m42;
+        }
+      }
+    }
+
+    private _sync2d() {
+      this.a = this.m11; this.b = this.m12; this.c = this.m21; this.d = this.m22;
+      this.e = this.m41; this.f = this.m42;
+    }
+
+    /** Multiply this × other, store result in this */
+    multiplySelf(other: DOMMatrixPolyfill): DOMMatrixPolyfill {
+      const a = this, b = other;
+      const m11 = a.m11*b.m11 + a.m12*b.m21 + a.m13*b.m31 + a.m14*b.m41;
+      const m12 = a.m11*b.m12 + a.m12*b.m22 + a.m13*b.m32 + a.m14*b.m42;
+      const m13 = a.m11*b.m13 + a.m12*b.m23 + a.m13*b.m33 + a.m14*b.m43;
+      const m14 = a.m11*b.m14 + a.m12*b.m24 + a.m13*b.m34 + a.m14*b.m44;
+      const m21 = a.m21*b.m11 + a.m22*b.m21 + a.m23*b.m31 + a.m24*b.m41;
+      const m22 = a.m21*b.m12 + a.m22*b.m22 + a.m23*b.m32 + a.m24*b.m42;
+      const m23 = a.m21*b.m13 + a.m22*b.m23 + a.m23*b.m33 + a.m24*b.m43;
+      const m24 = a.m21*b.m14 + a.m22*b.m24 + a.m23*b.m34 + a.m24*b.m44;
+      const m31 = a.m31*b.m11 + a.m32*b.m21 + a.m33*b.m31 + a.m34*b.m41;
+      const m32 = a.m31*b.m12 + a.m32*b.m22 + a.m33*b.m32 + a.m34*b.m42;
+      const m33 = a.m31*b.m13 + a.m32*b.m23 + a.m33*b.m33 + a.m34*b.m43;
+      const m34 = a.m31*b.m14 + a.m32*b.m24 + a.m33*b.m34 + a.m34*b.m44;
+      const m41 = a.m41*b.m11 + a.m42*b.m21 + a.m43*b.m31 + a.m44*b.m41;
+      const m42 = a.m41*b.m12 + a.m42*b.m22 + a.m43*b.m32 + a.m44*b.m42;
+      const m43 = a.m41*b.m13 + a.m42*b.m23 + a.m43*b.m33 + a.m44*b.m43;
+      const m44 = a.m41*b.m14 + a.m42*b.m24 + a.m43*b.m34 + a.m44*b.m44;
+      this.m11=m11; this.m12=m12; this.m13=m13; this.m14=m14;
+      this.m21=m21; this.m22=m22; this.m23=m23; this.m24=m24;
+      this.m31=m31; this.m32=m32; this.m33=m33; this.m34=m34;
+      this.m41=m41; this.m42=m42; this.m43=m43; this.m44=m44;
+      this._sync2d();
+      return this;
+    }
+
+    /** Multiply other × this, store result in this */
+    preMultiplySelf(other: DOMMatrixPolyfill): DOMMatrixPolyfill {
+      const b = this;
+      const a = other;
+      const m11 = a.m11*b.m11 + a.m12*b.m21 + a.m13*b.m31 + a.m14*b.m41;
+      const m12 = a.m11*b.m12 + a.m12*b.m22 + a.m13*b.m32 + a.m14*b.m42;
+      const m13 = a.m11*b.m13 + a.m12*b.m23 + a.m13*b.m33 + a.m14*b.m43;
+      const m14 = a.m11*b.m14 + a.m12*b.m24 + a.m13*b.m34 + a.m14*b.m44;
+      const m21 = a.m21*b.m11 + a.m22*b.m21 + a.m23*b.m31 + a.m24*b.m41;
+      const m22 = a.m21*b.m12 + a.m22*b.m22 + a.m23*b.m32 + a.m24*b.m42;
+      const m23 = a.m21*b.m13 + a.m22*b.m23 + a.m23*b.m33 + a.m24*b.m43;
+      const m24 = a.m21*b.m14 + a.m22*b.m24 + a.m23*b.m34 + a.m24*b.m44;
+      const m31 = a.m31*b.m11 + a.m32*b.m21 + a.m33*b.m31 + a.m34*b.m41;
+      const m32 = a.m31*b.m12 + a.m32*b.m22 + a.m33*b.m32 + a.m34*b.m42;
+      const m33 = a.m31*b.m13 + a.m32*b.m23 + a.m33*b.m33 + a.m34*b.m43;
+      const m34 = a.m31*b.m14 + a.m32*b.m24 + a.m33*b.m34 + a.m34*b.m44;
+      const m41 = a.m41*b.m11 + a.m42*b.m21 + a.m43*b.m31 + a.m44*b.m41;
+      const m42 = a.m41*b.m12 + a.m42*b.m22 + a.m43*b.m32 + a.m44*b.m42;
+      const m43 = a.m41*b.m13 + a.m42*b.m23 + a.m43*b.m33 + a.m44*b.m43;
+      const m44 = a.m41*b.m14 + a.m42*b.m24 + a.m43*b.m34 + a.m44*b.m44;
+      this.m11=m11; this.m12=m12; this.m13=m13; this.m14=m14;
+      this.m21=m21; this.m22=m22; this.m23=m23; this.m24=m24;
+      this.m31=m31; this.m32=m32; this.m33=m33; this.m34=m34;
+      this.m41=m41; this.m42=m42; this.m43=m43; this.m44=m44;
+      this._sync2d();
+      return this;
+    }
+
+    scaleSelf(sx: number = 1, sy?: number, _sz?: number, _ox?: number, _oy?: number, _oz?: number): DOMMatrixPolyfill {
+      if (sy === undefined) sy = sx;
+      const s = new DOMMatrixPolyfill([sx, 0, 0, sy, 0, 0]);
+      return this.multiplySelf(s);
+    }
+
+    translateSelf(tx: number = 0, ty: number = 0, _tz: number = 0): DOMMatrixPolyfill {
+      const t = new DOMMatrixPolyfill([1, 0, 0, 1, tx, ty]);
+      return this.multiplySelf(t);
+    }
+
+    scale(sx: number = 1, sy?: number): DOMMatrixPolyfill {
+      const r = new DOMMatrixPolyfill([this.m11,this.m12,this.m13,this.m14,this.m21,this.m22,this.m23,this.m24,
+        this.m31,this.m32,this.m33,this.m34,this.m41,this.m42,this.m43,this.m44]);
+      return r.scaleSelf(sx, sy);
+    }
+
+    translate(tx: number = 0, ty: number = 0): DOMMatrixPolyfill {
+      const r = new DOMMatrixPolyfill([this.m11,this.m12,this.m13,this.m14,this.m21,this.m22,this.m23,this.m24,
+        this.m31,this.m32,this.m33,this.m34,this.m41,this.m42,this.m43,this.m44]);
+      return r.translateSelf(tx, ty);
+    }
+
+    invertSelf(): DOMMatrixPolyfill {
+      const me = this;
+      const a=me.m11,b=me.m12,c=me.m21,d=me.m22,e=me.m41,f=me.m42;
+      const det = a*d - b*c;
+      if (det === 0) {
+        this.m11=NaN;this.m12=NaN;this.m21=NaN;this.m22=NaN;this.m41=NaN;this.m42=NaN;
+        this._sync2d();
+        return this;
+      }
+      this.m11 = d/det; this.m12 = -b/det;
+      this.m21 = -c/det; this.m22 = a/det;
+      this.m41 = (c*f - d*e)/det;
+      this.m42 = (b*e - a*f)/det;
+      this._sync2d();
+      return this;
+    }
+
+    getTransform(): DOMMatrixPolyfill {
+      return new DOMMatrixPolyfill([this.a, this.b, this.c, this.d, this.e, this.f]);
+    }
+  }
+  (globalThis as any).DOMMatrix = DOMMatrixPolyfill;
 }
+/* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-this-alias, @typescript-eslint/no-unused-vars */
+
+// Import pdf-parse AFTER the polyfill is installed
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { PDFParse } = require("pdf-parse") as typeof import("pdf-parse");
 
 const detailedAnalysisSchema = z.object({
   overallMatchScore: z.number().describe("Overall JD match percentage (0-100)"),
@@ -49,12 +191,11 @@ const detailedAnalysisSchema = z.object({
 });
 
 /**
- * Configure environment for pdfjs in Node.js / Next.js SSR
+ * No-op — DOMMatrix polyfill is now installed at module scope above.
+ * Kept as a call-site so the rest of the code doesn't change.
  */
 function ensurePdfWorker() {
-  if (typeof (globalThis as any).DOMMatrix === "undefined") {
-    (globalThis as any).DOMMatrix = DOMMatrix;
-  }
+  // polyfill already applied at top of module
 }
 
 /**
