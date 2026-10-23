@@ -7,7 +7,7 @@ import { Button } from "./ui/button";
 import DisplayTechIcons from "./DisplayTechIcons";
 import DeleteInterviewButton from "./DeleteInterviewButton";
 
-import { cn, getRandomInterviewCover } from "@/lib/utils";
+import { cn, getInterviewCoverImage } from "@/lib/utils";
 import { getFeedbackByInterviewId } from "@/lib/actions/general.action";
 
 const InterviewCard = async ({
@@ -17,6 +17,7 @@ const InterviewCard = async ({
   type,
   techstack,
   createdAt,
+  coverImage,
 }: InterviewCardProps) => {
   const feedback =
     userId && interviewId
@@ -40,6 +41,8 @@ const InterviewCard = async ({
   ).format("MMM D, YYYY");
 
   const hasFeedback = Boolean(feedback);
+  const coverSrc = getInterviewCoverImage(role, techstack, coverImage);
+  const isRemote = coverSrc.startsWith("http");
 
   return (
     <div className="card-border w-full min-h-[380px] flex flex-col group">
@@ -65,15 +68,18 @@ const InterviewCard = async ({
             )}
           </div>
 
-          {/* Cover Image & Role */}
+          {/* Dynamic Cover Image & Role */}
           <div className="flex items-center gap-4">
-            <Image
-              src={getRandomInterviewCover()}
-              alt="cover-image"
-              width={64}
-              height={64}
-              className="rounded-2xl object-cover size-16 border border-white/10 shrink-0"
-            />
+            <div className="relative size-16 rounded-2xl bg-dark-200/90 border border-white/10 shrink-0 flex items-center justify-center p-2.5 overflow-hidden shadow-inner group-hover:border-primary-200/40 transition-colors">
+              <Image
+                src={coverSrc}
+                alt={`${role} cover`}
+                width={48}
+                height={48}
+                unoptimized={isRemote}
+                className="object-contain size-full max-h-11 max-w-11"
+              />
+            </div>
             <div className="flex flex-col min-w-0">
               <h3 className="capitalize text-lg font-bold text-white truncate">
                 {role}

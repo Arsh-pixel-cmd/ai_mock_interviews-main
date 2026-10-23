@@ -2,7 +2,7 @@ import { generateText } from "ai";
 import { groq } from "@ai-sdk/groq";
 
 import { execute } from "@/lib/db";
-import { getRandomInterviewCover } from "@/lib/utils";
+import { getInterviewCoverImage } from "@/lib/utils";
 import { GROQ_MODEL } from "@/constants";
 
 export async function POST(request: Request) {
@@ -28,7 +28,7 @@ export async function POST(request: Request) {
 
     const interviewId = crypto.randomUUID();
     const createdAt = new Date().toISOString();
-    const coverImage = getRandomInterviewCover();
+    const coverImage = getInterviewCoverImage(role, techstack);
     
     let parsedQuestions: string[] = [];
     try {
