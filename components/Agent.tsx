@@ -37,6 +37,21 @@ interface SavedMessage {
   content: string;
 }
 
+/** Browser Speech Recognition API (webkit-prefixed, not in standard TS lib.dom) */
+interface BrowserSpeechRecognition extends EventTarget {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  maxAlternatives: number;
+  onstart: ((this: BrowserSpeechRecognition, ev: Event) => void) | null;
+  onresult: ((this: BrowserSpeechRecognition, ev: Event & { results: SpeechRecognitionResultList }) => void) | null;
+  onerror: ((this: BrowserSpeechRecognition, ev: Event & { error: string }) => void) | null;
+  onend: ((this: BrowserSpeechRecognition, ev: Event) => void) | null;
+  start(): void;
+  stop(): void;
+  abort(): void;
+}
+
 const Agent = ({
   userName,
   userId,
@@ -70,7 +85,7 @@ const Agent = ({
   const audioChunksRef = useRef<Blob[]>([]);
 
   // Speech Recognition & TTS Refs
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
   const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const speechTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const activeUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
@@ -80,7 +95,7 @@ const Agent = ({
   const messagesRef = useRef<SavedMessage[]>([]);
   const callStatusRef = useRef<CallStatus>(CallStatus.INACTIVE);
   const recognitionRestartLockRef = useRef<boolean>(false);
-  const restartSpeechRecognitionRef = useRef<() => void>(() => {});
+  const restartSpeechRecognitionRef = useRef<() => void>(() => { });
 
   useEffect(() => {
     isSpeakingRef.current = isSpeaking;
@@ -153,13 +168,13 @@ const Agent = ({
     if (recognitionRef.current) {
       try {
         recognitionRef.current.abort();
-      } catch {}
+      } catch { }
       recognitionRef.current = null;
     }
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
       try {
         mediaRecorderRef.current.stop();
-      } catch {}
+      } catch { }
       mediaRecorderRef.current = null;
     }
     if (mediaStreamRef.current) {
@@ -169,7 +184,7 @@ const Agent = ({
     if (audioContextRef.current && audioContextRef.current.state !== "closed") {
       try {
         audioContextRef.current.close();
-      } catch {}
+      } catch { }
       audioContextRef.current = null;
     }
     activeUtteranceRef.current = null;
@@ -380,9 +395,10 @@ const Agent = ({
     if (recognitionRestartLockRef.current) return;
     recognitionRestartLockRef.current = true;
 
-    const SpeechRecognitionAPI =
-      (window as any).SpeechRecognition ||
-      (window as any).webkitSpeechRecognition;
+    const SpeechRecognitionAPI = (
+      (window as unknown as Record<string, unknown>).SpeechRecognition ||
+      (window as unknown as Record<string, unknown>).webkitSpeechRecognition
+    ) as { new(): BrowserSpeechRecognition } | undefined;
 
     if (!SpeechRecognitionAPI) {
       recognitionRestartLockRef.current = false;
@@ -391,8 +407,8 @@ const Agent = ({
 
     // Tear down previous instance completely
     if (recognitionRef.current) {
-      try { recognitionRef.current.onend = null; } catch {}
-      try { recognitionRef.current.abort(); } catch {}
+      try { recognitionRef.current.onend = null; } catch { }
+      try { recognitionRef.current.abort(); } catch { }
       recognitionRef.current = null;
     }
 
@@ -412,7 +428,7 @@ const Agent = ({
           console.log("[SpeechRecognition] started");
         };
 
-        recognition.onresult = (event: SpeechRecognitionEvent) => {
+        recognition.onresult = (event: Event & { results: SpeechRecognitionResultList }) => {
           // If candidate speaks while AI was talking, interrupt the AI
           if (isSpeakingRef.current) {
             if (typeof window !== "undefined" && "speechSynthesis" in window) {
@@ -451,7 +467,7 @@ const Agent = ({
           }, 5000);
         };
 
-        recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+        recognition.onerror = (event: Event & { error: string }) => {
           if (event.error === "no-speech" || event.error === "aborted") return;
           console.warn("[SpeechRecognition] error:", event.error);
         };
@@ -736,7 +752,7 @@ const Agent = ({
           className={cn(
             "card-border transition-all duration-300",
             (isUserSpeaking || micVolume > 15) &&
-              "border-success-100 shadow-xl shadow-success-100/20 ring-2 ring-success-100/30"
+            "border-success-100 shadow-xl shadow-success-100/20 ring-2 ring-success-100/30"
           )}
         >
           <div className="card-content relative overflow-hidden">

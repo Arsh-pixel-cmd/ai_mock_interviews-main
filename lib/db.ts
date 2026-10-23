@@ -20,22 +20,32 @@ let cachedDb: D1DatabaseLike | null | undefined = undefined;
 async function getD1Binding(): Promise<D1DatabaseLike | null> {
   if (cachedDb !== undefined) return cachedDb;
 
-  try {
-    const { getCloudflareContext } = await import("@opennextjs/cloudflare");
-    const ctx = await getCloudflareContext({ async: true });
-    const dbBinding = (ctx?.env as Record<string, unknown>)?.DB as D1DatabaseLike | undefined;
-    if (dbBinding) {
-      cachedDb = dbBinding;
+  // In local development the REST API credentials are set — prefer the REST
+  // API path so we talk to the real remote D1 instead of the empty local
+  // miniflare D1 instance that @opennextjs/cloudflare spins up.
+  const hasRestCreds =
+    process.env.CLOUDFLARE_ACCOUNT_ID &&
+    process.env.CLOUDFLARE_D1_DATABASE_ID &&
+    process.env.CLOUDFLARE_API_TOKEN;
+
+  if (!hasRestCreds) {
+    try {
+      const { getCloudflareContext } = await import("@opennextjs/cloudflare");
+      const ctx = await getCloudflareContext({ async: true });
+      const dbBinding = (ctx?.env as Record<string, unknown>)?.DB as D1DatabaseLike | undefined;
+      if (dbBinding) {
+        cachedDb = dbBinding;
+        return cachedDb;
+      }
+    } catch {
+      // Not running inside Cloudflare runtime
+    }
+
+    const globalDb = (globalThis as unknown as Record<string, unknown>).DB as D1DatabaseLike | undefined;
+    if (globalDb) {
+      cachedDb = globalDb;
       return cachedDb;
     }
-  } catch {
-    // Not running inside Cloudflare runtime
-  }
-
-  const globalDb = (globalThis as unknown as Record<string, unknown>).DB as D1DatabaseLike | undefined;
-  if (globalDb) {
-    cachedDb = globalDb;
-    return cachedDb;
   }
 
   cachedDb = null;
